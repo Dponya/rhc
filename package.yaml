@@ -1,10 +1,10 @@
 name:                rhc
 version:             0.1.0.0
-github:              "githubuser/rhc"
-license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2022 Author name here"
+github:              "dponya/rhc"
+license:             MIT
+author:              "Yerbol Altynbek"
+maintainer:          "Yerbol Altynbek"
+copyright:           "2022 Yerbol Altynbek"
 
 extra-source-files:
 - README.md
