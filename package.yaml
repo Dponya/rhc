@@ -21,10 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- wai
+- warp
+- http-types
+- bytestring
 
 library:
-  dependencies: 
-  - rhc
   source-dirs: src
 
 tests:
