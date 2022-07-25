@@ -1,15 +1,18 @@
 module Network.RHC.Server where
 
-server = "Hello"
+type MethodName = String
+type Method = * -> IO ()
+newtype Methods = Methods [(MethodName, Method)]
 
--- data Transport = HTTP --WS is not implemented yet | WS
+runRHCServer :: Methods -> IO ()
+runRHCServer methods = undefined
 
 data Request prm = Request {
         resVersion :: String,
         method :: String,
-        params :: Maybe prm, -- structure
+        params :: Maybe prm,  -- structure
         reqId :: Maybe String -- note: should change request type to sum type
-                        -- between notification and ordinary request
+                              -- between notification and ordinary request
 }
 
 data Response res = Response {
