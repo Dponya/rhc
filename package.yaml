@@ -25,6 +25,7 @@ dependencies:
 - warp
 - http-types
 - bytestring
+- aeson
 
 library:
   source-dirs: src
