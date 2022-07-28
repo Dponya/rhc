@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Network.RHC.Internal.Server where
 
 import Network.Wai (
@@ -39,20 +40,17 @@ requestBodyReceiver req = byteString . toStrict <$> lazyRequestBody req
                                    decoded <- decodedBody
                                    lookupMethod (method decoded) methods -}
 
-parseRequestBody :: FromJSON a => Builder -> Maybe (RequestRHC a)
-parseRequestBody body = decode $ toLazyByteString body
-
-{- performingProcess :: Builder -> Methods -> Maybe Method
+performingProcess :: Builder -> Methods -> Maybe Method
 performingProcess body methods = do
-                                   decodedBody <- parseRequestBody body
-                                   lookupMethod (method decodedBody) methods -}
+                                   decoded <- decode $ toLazyByteString body
+                                   lookupMethod (method decoded) methods
 
+data ParamsRHC = ArrayType [(Integer, *)] | ObjectType [(String, *)]
 
-
-data RequestRHC prm = RequestRHC {
+data RequestRHC = RequestRHC {
         resVersion :: String,
         method :: MethodName,
-        params :: Maybe prm,
+        params :: Maybe ParamsRHC,
         reqId :: Maybe String
 }
 
@@ -63,7 +61,7 @@ data ResponseRHC res = Response {
         resId :: Maybe String
 }
 
-instance FromJSON a => FromJSON (RequestRHC a) where
+instance FromJSON RequestRHC where
         parseJSON (Object v) =
                 RequestRHC <$> v .: "jsonrpc"
                            <*> v .: "method"
@@ -71,4 +69,5 @@ instance FromJSON a => FromJSON (RequestRHC a) where
                            <*> v .: "id"
         parseJSON _ = mempty
 
--- test = run 3000 app
+instance FromJSON ParamsRHC where
+        parseJSON _ = undefined
