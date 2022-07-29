@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use newtype instead of data" #-}
 module Network.RHC.Internal.Server where
 
 import Network.Wai (
@@ -14,9 +14,10 @@ import Network.Wai.Handler.Warp (run, Port)
 import Network.HTTP.Types (status200)
 import Data.ByteString.Builder (byteString, Builder, toLazyByteString)
 import Data.ByteString.Lazy (toStrict, ByteString)
-import Data.Aeson (FromJSON, Object, decode)
+import Data.Aeson (FromJSON, Object, decode, eitherDecode)
 import Data.Aeson.Types
-import Network.RHC.Server (Methods, MethodName, Method, lookupMethod)
+import Network.RHC.Server (Methods, MethodName, Method (Method), lookupMethod)
+import Data.Aeson.KeyMap (toList)
 
 runWarpServer :: Methods -> Port -> IO ()
 runWarpServer methods port =
@@ -26,33 +27,27 @@ runWarpServer methods port =
                         let responseSender answer =
                                 send (responseBuilder status200 [] answer)
                         body <- requestBodyReceiver req
+                        print $ (eitherDecode :: ByteString -> Either String RequestRHC) 
+                                $ toLazyByteString body
                         responseSender body
                 in run port app
 
 requestBodyReceiver :: Request -> IO Builder
 requestBodyReceiver req = byteString . toStrict <$> lazyRequestBody req
 
-
--- performingProcess :: Builder -> Methods -> Maybe Method
-{- performingProcess body methods = do
-                                   let decodedBody :: FromJSON a => Maybe (RequestRHC a)
-                                       decodedBody = decode . toLazyByteString $ body
-                                   decoded <- decodedBody
-                                   lookupMethod (method decoded) methods -}
-
 performingProcess :: Builder -> Methods -> Maybe Method
 performingProcess body methods = do
                                    decoded <- decode $ toLazyByteString body
                                    lookupMethod (method decoded) methods
 
-data ParamsRHC = ArrayType [(Integer, *)] | ObjectType [(String, *)]
+data ParamsRHC = ArrayParams [(Key, Value)] deriving Show
 
 data RequestRHC = RequestRHC {
         resVersion :: String,
         method :: MethodName,
         params :: Maybe ParamsRHC,
         reqId :: Maybe String
-}
+} deriving Show
 
 data ResponseRHC res = Response {
         reqVersion :: String,
@@ -70,4 +65,5 @@ instance FromJSON RequestRHC where
         parseJSON _ = mempty
 
 instance FromJSON ParamsRHC where
+        parseJSON (Object v) = return $ ArrayParams $ Data.Aeson.KeyMap.toList v
         parseJSON _ = undefined
