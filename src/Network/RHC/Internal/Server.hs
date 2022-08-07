@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# OPTIONS_GHC -Wno-missing-fields #-}
+{-# LANGUAGE DeriveFunctor #-}
 module Network.RHC.Internal.Server where
 
 import Network.Wai (
@@ -39,6 +38,9 @@ requestBodyReceiver req = byteString . toStrict <$> lazyRequestBody req
 decodeToReq :: ByteString -> Maybe (Req Object)
 decodeToReq = decode :: ByteString -> Maybe (Req Object)
 
+toRPCRequest :: RequestParamsParser a => ByteString -> Maybe (Req (Maybe a))
+toRPCRequest body = fmap (fmap requestParamsParse) (decodeToReq body)
+
 class RequestParamsParser a where
         requestParamsParse :: Object -> Maybe a
 
@@ -54,11 +56,7 @@ data Req prm = Notification {
                 method :: MethodName,
                 params :: prm,
                 reqId :: String
-        } deriving Show
-
-instance Functor Req where
-        fmap f (Notification { params }) = Notification { params = f params }
-        fmap f (Request { params }) = Request { params = f params }
+        } deriving (Show, Functor)
 
 data ResponseRHC res = Response {
         reqVersion :: String,
