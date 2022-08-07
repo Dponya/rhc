@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# OPTIONS_GHC -Wno-missing-fields #-}
 module Network.RHC.Internal.Server where
 
 import Network.Wai (
@@ -7,16 +9,17 @@ import Network.Wai (
         Application,
         Request,
         lazyRequestBody,
-        strictRequestBody
+        strictRequestBody, getRequestBodyChunk
         )
 import Network.Wai.Handler.Warp (run, Port)
 import Network.HTTP.Types (status200)
 import Data.ByteString.Builder (byteString, Builder, toLazyByteString)
-import Data.ByteString.Lazy (toStrict, ByteString)
 import Data.Aeson (FromJSON, Object, decode, eitherDecode)
 import Data.Aeson.Types
 import Network.RHC.Server (Methods, MethodName, Method (Method), lookupMethod, MethodArguments)
-import Data.Aeson.KeyMap (toList)
+import Data.Aeson.KeyMap (member)
+import Control.Applicative (Alternative)
+import Data.ByteString.Lazy
 
 runWarpServer :: Port -> IO ()
 runWarpServer port =
@@ -25,31 +28,37 @@ runWarpServer port =
                         do
                         let responseSender answer =
                                 send (responseBuilder status200 [] answer)
-                        body <- requestBodyReceiver req
-                        responseSender body
+                        body <- getRequestBodyChunk req
+                        print $ decodeToReq $ (toLazyByteString . byteString) body
+                        responseSender ""
                 in run port app
 
 requestBodyReceiver :: Request -> IO Builder
 requestBodyReceiver req = byteString . toStrict <$> lazyRequestBody req
 
--- bodyRequestParse = parseMaybe (a -> Parser b) a
-
-requestParsingProcess :: RequestParamsParser b => Builder -> Maybe b
-requestParsingProcess body = do
-                             requestRHC <- (decode :: ByteString -> Maybe RequestRHC)
-                                        $ toLazyByteString body
-                             paramsForParse <- params requestRHC
-                             requestParamsParse  paramsForParse
+decodeToReq :: ByteString -> Maybe (Req Object)
+decodeToReq = decode :: ByteString -> Maybe (Req Object)
 
 class RequestParamsParser a where
         requestParamsParse :: Object -> Maybe a
 
-data RequestRHC = RequestRHC {
-        resVersion :: String,
-        method :: MethodName,
-        params :: Maybe Object,
-        reqId :: Maybe String
-} deriving Show
+class (RequestParamsParser a, Show a) => RequestDebugger a where
+        printReq :: Req a -> IO ()
+
+data Req prm = Notification {
+                resVersion :: String,
+                method :: MethodName,
+                params :: prm
+        } | Request {
+                resVersion :: String,
+                method :: MethodName,
+                params :: prm,
+                reqId :: String
+        } deriving Show
+
+instance Functor Req where
+        fmap f (Notification { params }) = Notification { params = f params }
+        fmap f (Request { params }) = Request { params = f params }
 
 data ResponseRHC res = Response {
         reqVersion :: String,
@@ -58,11 +67,15 @@ data ResponseRHC res = Response {
         resId :: Maybe String
 }
 
-
-instance FromJSON RequestRHC where
-        parseJSON (Object v) =
-                RequestRHC <$> v .: "jsonrpc"
-                           <*> v .: "method"
-                           <*> v .: "params"
-                           <*> v .: "id"
+instance FromJSON (Req Object) where
+        parseJSON (Object v) = if member "id" v
+                                then Request
+                                  <$> v .: "jsonrpc"
+                                  <*> v .: "method"
+                                  <*> v .: "params"
+                                  <*> v .: "id" 
+                                else Notification
+                                  <$> v .: "jsonrpc"
+                                  <*> v .: "method"
+                                  <*> v .: "params"
         parseJSON _ = mempty
