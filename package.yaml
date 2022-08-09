@@ -29,6 +29,12 @@ dependencies:
 
 library:
   source-dirs: src
+executables:
+  simple-server:
+    main: examples/simple-server.hs
+    dependencies:
+      - rhc
+      - aeson
 
 tests:
   rhc-test:
