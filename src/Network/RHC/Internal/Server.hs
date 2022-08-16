@@ -5,12 +5,14 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Network.RHC.Internal.Server where
 
-import Control.Applicative (Alternative)
-import Data.Aeson (FromJSON, Object, decode)
-import Data.Aeson.KeyMap (member)
+import Control.Applicative (Alternative, (<|>))
+import Data.Aeson (FromJSON, Object, decode, eitherDecode, encode)
+import Data.Aeson.KeyMap (member, toList)
 import Data.Aeson.Types
 import Data.ByteString.Builder (byteString, toLazyByteString)
 import Data.ByteString.Lazy
@@ -23,17 +25,19 @@ import Network.Wai
     responseBuilder,
   )
 import Network.Wai.Handler.Warp (Port, run)
+import Data.Aeson.Text (encodeToTextBuilder)
+import qualified Data.Vector as DV
 
-data Req prm 
+data Req a
   = Notification
       { resVersion :: String,
         method :: MethodName,
-        params :: prm
+        params :: a
       }
   | Request
       { resVersion :: String,
         method :: MethodName,
-        params :: prm,
+        params :: a,
         reqId :: String
       }
   deriving (Show, Functor)
@@ -45,31 +49,30 @@ data Res res = Response
     resId :: Maybe String
   }
 
-class RequestParamsParser a where
-  requestParamsParse :: Object -> Maybe a
+class FromJSON a => RequestParse a where
+  paramsParse :: Value -> Maybe a
+  paramsParse v = case fromJSON v of
+    Error s -> Nothing
+    Success any -> Just any
 
-decodeToReq :: ByteString -> Maybe (Req Object)
-decodeToReq = decode :: ByteString -> Maybe (Req Object)
+decodeToReq :: forall a. ByteString -> Maybe (Req Value)
+decodeToReq = decode
 
-toRPCRequest :: RequestParamsParser b => ByteString -> Maybe (Req b)
+toRPCRequest :: forall b. (RequestParse b) => ByteString -> Maybe b
 toRPCRequest body = do
-  req <- decodeToReq body
-  reqBind requestParamsParse req
+            req <- decodeToReq body
+            paramsParse . params $ req
 
-reqBind :: Applicative m => (a -> m b) -> Req a -> m (Req b)
+{- reqBind :: Applicative m => (a -> m b) -> Req -> m Req
 reqBind f (Notification ver method prm) =
   Notification ver method
     <$> f prm
 reqBind f (Request ver method prm reqId) =
   Request ver method
     <$> f prm
-    <*> pure reqId
+    <*> pure reqId -}
 
-printRPCRequest :: (Show b, RequestParamsParser b) => Maybe (Req b) -> IO ()
-printRPCRequest (Just req) = print req
-printRPCRequest Nothing = print "Parsing problem"
-
-instance FromJSON (Req Object) where
+instance FromJSON (Req Value) where
   parseJSON (Object v) =
     if member "id" v
       then
@@ -86,7 +89,7 @@ instance FromJSON (Req Object) where
   parseJSON _ = mempty
 
 -- Temporarily type scope with b variable to print result of parsing here
-runWarpServer :: forall b. (Show b, RequestParamsParser b) => Port -> IO ()
+runWarpServer :: forall b. (Show b, RequestParse b) => Port -> IO ()
 runWarpServer port =
   let app :: Application
       app req send =
@@ -94,6 +97,7 @@ runWarpServer port =
           let responseSender answer =
                 send (responseBuilder status200 [] answer)
           body <- toLazyByteString . byteString <$> getRequestBodyChunk req
-          printRPCRequest $ toRPCRequest @b body
+          --print $ toRPCRequestM @_ @b body
+          print $ toRPCRequest @b body
           responseSender ""
    in run port app

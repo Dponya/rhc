@@ -36,6 +36,7 @@ library
     , base >=4.7 && <5
     , bytestring
     , http-types
+    , vector
     , wai
     , warp
   default-language: Haskell2010
@@ -50,6 +51,7 @@ executable simple-server
     , bytestring
     , http-types
     , rhc
+    , vector
     , wai
     , warp
   default-language: Haskell2010
@@ -68,6 +70,7 @@ test-suite rhc-test
     , bytestring
     , http-types
     , rhc
+    , vector
     , wai
     , warp
   default-language: Haskell2010

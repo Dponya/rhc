@@ -26,6 +26,7 @@ dependencies:
 - http-types
 - bytestring
 - aeson
+- vector
 
 library:
   source-dirs: src
@@ -35,7 +36,7 @@ executables:
     dependencies:
       - rhc
       - aeson
-
+      - vector
 tests:
   rhc-test:
     main:                Spec.hs

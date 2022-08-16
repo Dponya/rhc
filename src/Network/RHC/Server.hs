@@ -41,16 +41,6 @@ class RHCMethod a where
 todo: replace Value with FlexibleInstances with
         new constraint (class RHCTypes) that will type-cast aeson types to Value type
 -}
-instance (RHCMethod b) => RHCMethod (Value -> b) where
-  initMethod f (MethodArguments (x : xs)) =
-    initMethod (f x) (MethodArguments xs)
-  initMethod _ _ = return $ Left "too few arguments"
-
-instance RHCMethod (IO a) where
-  initMethod f (MethodArguments []) = do
-    _ <- f
-    return $ Right "good"
-  initMethod _ _ = return $ Left "too many arguments"
 
 lookupMethod :: MethodName -> Methods -> Maybe Method
 lookupMethod = lookup
