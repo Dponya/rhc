@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Network.RHC.Internal.Server where
@@ -17,7 +18,6 @@ import Data.Aeson.Types
 import Data.ByteString.Builder (byteString, toLazyByteString)
 import Data.ByteString.Lazy
 import Network.HTTP.Types (status200)
-import Network.RHC.Server (MethodName)
 import Network.Wai
   ( Application,
     Request,
@@ -26,7 +26,6 @@ import Network.Wai
   )
 import Network.Wai.Handler.Warp (Port, run)
 import Data.Aeson.Text (encodeToTextBuilder)
-import qualified Data.Vector as DV
 
 data Req a
   = Notification
@@ -50,15 +49,15 @@ data Res res = Response
   }
 
 class FromJSON a => RequestParse a where
-  paramsParse :: Value -> Maybe a
+  paramsParse :: Value -> Either String a
   paramsParse v = case fromJSON v of
-    Error s -> Nothing
-    Success any -> Just any
+    Error s ->  Left s
+    Success p -> Right p
 
-decodeToReq :: forall a. ByteString -> Maybe (Req Value)
-decodeToReq = decode
+decodeToReq :: forall a. ByteString -> Either String (Req Value)
+decodeToReq = eitherDecode
 
-toRPCRequest :: forall b. (RequestParse b) => ByteString -> Maybe b
+toRPCRequest :: forall b. RequestParse b => ByteString -> Either String b
 toRPCRequest body = do
             req <- decodeToReq body
             paramsParse . params $ req
@@ -97,7 +96,37 @@ runWarpServer port =
           let responseSender answer =
                 send (responseBuilder status200 [] answer)
           body <- toLazyByteString . byteString <$> getRequestBodyChunk req
-          --print $ toRPCRequestM @_ @b body
           print $ toRPCRequest @b body
           responseSender ""
    in run port app
+
+type MethodResult = IO (Either String String)
+
+type MethodName = String
+
+data MethodArgs a = ArrArgs [a] | StructArgs a
+
+class FromJSON a => Method f a where
+  carryToProcedure :: f -> a -> MethodResult
+
+instance Method b [a] => Method (a -> b) [a] where
+  carryToProcedure f (x:xs) = carryToProcedure (f x) xs
+  carryToProcedure _ _ = return $ Left "too few arguments"
+
+instance FromJSON a => Method (IO ()) [a] where
+  carryToProcedure f [] = do
+                  _ <- f
+                  return $ Right "good"
+  carryToProcedure _ _ = return $ Left "too many arguments"
+
+initMethod :: Method f a => f -> a -> MethodResult
+initMethod = carryToProcedure
+
+{-
+TODO:
+1) Create methods storage & build mechanism of executing them
+and consuming parameters
+2) Take over RequestParse from context of runWarpServer and try to set it to method defining func
+  examlpe: method @Ruler \x -> print $ incrementAge x
+3) Take a result of producing result from method calling and build response
+-}

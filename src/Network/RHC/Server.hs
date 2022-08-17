@@ -4,7 +4,7 @@ module Network.RHC.Server where
 
 import Data.Aeson (Object)
 
-type MethodName = String
+{- type MethodName = String
 
 data Key
 
@@ -17,7 +17,7 @@ data Value
   | VObject [(String, Value)]
   | VNull
 
-newtype MethodArguments = MethodArguments [Value]
+--newtype MethodArguments = MethodArguments [Value]
 
 margs = MethodArguments [VString "blah", VInteger 1]
 
@@ -35,15 +35,15 @@ method :: RHCMethod a => a -> Method
 method f = Method (initMethod f)
 
 class RHCMethod a where
-  initMethod :: a -> MethodArguments -> MethodResult
+  initMethod :: a -> MethodArguments -> MethodResult -}
 
 {-
 todo: replace Value with FlexibleInstances with
         new constraint (class RHCTypes) that will type-cast aeson types to Value type
 -}
 
-lookupMethod :: MethodName -> Methods -> Maybe Method
+{- lookupMethod :: MethodName -> Methods -> Maybe Method
 lookupMethod = lookup
 
 runRHCServer :: Methods -> IO ()
-runRHCServer methods = undefined
+runRHCServer methods = undefined -}

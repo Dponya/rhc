@@ -23,7 +23,7 @@ import Data.Aeson (Object)
 import Data.Aeson (Value(Array))
 
 main :: IO ()
-main = runWarpServer @Rulers 3000
+main = runWarpServer @Ruler 3000
 
 data Ruler = Ruler
   { name :: String,
