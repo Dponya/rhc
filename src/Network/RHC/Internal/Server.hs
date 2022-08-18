@@ -109,6 +109,11 @@ data MethodArgs a = ArrArgs [a] | StructArgs a
 class FromJSON a => Method f a where
   carryToProcedure :: f -> a -> MethodResult
 
+instance (FromJSON a, FromJSON b) => Method (a -> IO b) a where
+  carryToProcedure f a = do
+                  _ <- f a
+                  return $ Right "good"
+
 instance Method b [a] => Method (a -> b) [a] where
   carryToProcedure f (x:xs) = carryToProcedure (f x) xs
   carryToProcedure _ _ = return $ Left "too few arguments"
@@ -123,20 +128,25 @@ data NamePers =
   NamePers {
     nameR :: String,
     ageR :: Integer
-  }
+  } deriving Show
 
-changeName :: NamePers -> String -> IO NamePers
-changeName pers name = return $ NamePers name (ageR pers)
+instance FromJSON NamePers where
+  parseJSON _ = undefined
 
-{- add :: Int -> Int -> IO ()
+changeName :: NamePers -> IO NamePers
+changeName pers = do
+              print pers
+              return pers
+
+add :: Int -> Int -> IO ()
 add x y = do
           print (x + y)
 
 ex :: [Int] -> MethodResult
-ex = carryToProcedure add -}
+ex = carryToProcedure add
 
-{- ex1 :: []
-ex1 = carryToProcedure changeName -}
+ex1 :: NamePers -> MethodResult
+ex1 = carryToProcedure changeName
 
 {-
 TODO:
