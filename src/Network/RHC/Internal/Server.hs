@@ -113,14 +113,30 @@ instance Method b [a] => Method (a -> b) [a] where
   carryToProcedure f (x:xs) = carryToProcedure (f x) xs
   carryToProcedure _ _ = return $ Left "too few arguments"
 
-instance FromJSON a => Method (IO ()) [a] where
+instance FromJSON a => Method (IO b) [a] where
   carryToProcedure f [] = do
                   _ <- f
                   return $ Right "good"
   carryToProcedure _ _ = return $ Left "too many arguments"
 
-initMethod :: Method f a => f -> a -> MethodResult
-initMethod = carryToProcedure
+data NamePers =
+  NamePers {
+    nameR :: String,
+    ageR :: Integer
+  }
+
+changeName :: NamePers -> String -> IO NamePers
+changeName pers name = return $ NamePers name (ageR pers)
+
+{- add :: Int -> Int -> IO ()
+add x y = do
+          print (x + y)
+
+ex :: [Int] -> MethodResult
+ex = carryToProcedure add -}
+
+{- ex1 :: []
+ex1 = carryToProcedure changeName -}
 
 {-
 TODO:
