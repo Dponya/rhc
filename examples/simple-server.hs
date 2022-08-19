@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Main where
 
@@ -15,7 +16,9 @@ import Network.RHC.Internal.Server
   (
     runWarpServer,
     RequestParse,
-    paramsParse
+    paramsParse,
+    initMethod,
+    MethodResult
   )
 import qualified Data.Vector as DV
 import Network.Wai.Handler.Warp (Port)
@@ -25,25 +28,46 @@ import Data.Aeson (Value(Array))
 main :: IO ()
 main = runWarpServer @Ruler 3000
 
-data Ruler = Ruler
-  { name :: String,
-    title :: String,
-    age :: Integer
-  }
-  deriving (Show, RequestParse)
+data Ruler =
+  Ruler {
+    personId :: Integer,
+    name :: String
+  } deriving (Show, RequestParse)
 
-newtype Rulers = Rulers [Ruler] deriving (Show, RequestParse)
+data ChangeRulerNameReq =
+  ChangeRulerNameReq {
+    changingPersonId :: Integer,
+    newName :: String,
+    oldName :: String
+  } deriving (Show, RequestParse)
+-- RequestParse is necessary for defining your datatype by library
+
+-- instance for parcing (aeson)
+instance FromJSON ChangeRulerNameReq where
+  parseJSON (Object obj) = do
+        changingPersonId <- obj .: "changingPersonId"
+        newName <- obj .: "newName"
+        oldName <- obj .: "oldName"
+        return $ ChangeRulerNameReq changingPersonId newName oldName
+  parseJSON _ = mempty
 
 instance FromJSON Ruler where
   parseJSON (Object obj) = do
+        personId <- obj .: "personId"
         name <- obj .: "name"
-        title <- obj .: "title"
-        age <- obj .: "age"
-        return $ Ruler name title age
+        return $ Ruler personId name
   parseJSON _ = mempty
 
-instance FromJSON Rulers where
-  parseJSON (Array v) = do
-      rulersList <- mapM (parseJSON :: Value -> Parser Ruler) v
-      return $ Rulers $ DV.toList rulersList
-  parseJSON _ = mempty
+-- simple methods
+changeName :: ChangeRulerNameReq -> IO Ruler
+changeName (ChangeRulerNameReq {changingPersonId, newName, oldName})
+            = return (Ruler changingPersonId newName)
+
+add :: Int -> Int -> IO ()
+add x y = print (x + y)
+
+ex1 :: ChangeRulerNameReq -> MethodResult
+ex1 = initMethod changeName
+
+ex :: [Int] -> MethodResult
+ex = initMethod add
