@@ -32,13 +32,13 @@ library
   hs-source-dirs:
       src
   build-depends:
-      aeson
+      aeson >=2.0.3.0 && <2.0.4.0
     , base >=4.7 && <5
-    , bytestring
-    , http-types
-    , vector
-    , wai
-    , warp
+    , bytestring >=0.10.12 && <0.11
+    , http-types >=0.12.3 && <0.13
+    , vector >=0.12.3.1 && <0.13
+    , wai >=3.2.3 && <3.3
+    , warp >=3.3.20 && <3.4
   default-language: Haskell2010
 
 executable simple-server
@@ -48,12 +48,12 @@ executable simple-server
   build-depends:
       aeson
     , base >=4.7 && <5
-    , bytestring
-    , http-types
+    , bytestring >=0.10.12 && <0.11
+    , http-types >=0.12.3 && <0.13
     , rhc
     , vector
-    , wai
-    , warp
+    , wai >=3.2.3 && <3.3
+    , warp >=3.3.20 && <3.4
   default-language: Haskell2010
 
 test-suite rhc-test
@@ -65,12 +65,12 @@ test-suite rhc-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      aeson >=2.0.3.0 && <2.0.4.0
     , base >=4.7 && <5
-    , bytestring
-    , http-types
+    , bytestring >=0.10.12 && <0.11
+    , http-types >=0.12.3 && <0.13
     , rhc
-    , vector
-    , wai
-    , warp
+    , vector >=0.12.3.1 && <0.13
+    , wai >=3.2.3 && <3.3
+    , warp >=3.3.20 && <3.4
   default-language: Haskell2010

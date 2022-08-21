@@ -11,7 +11,6 @@
 
 module Network.RHC.Internal.Server where
 
-import Control.Applicative (Alternative, (<|>))
 import Data.Aeson (FromJSON, Object, decode, eitherDecode, encode)
 import Data.Aeson.KeyMap (member, toList)
 import Data.Aeson.Types
@@ -26,6 +25,8 @@ import Network.Wai
   )
 import Network.Wai.Handler.Warp (Port, run)
 import Data.Aeson.Text (encodeToTextBuilder)
+import GHC.TypeLits
+import Data.Kind (Type)
 
 data Req a
   = Notification
@@ -48,19 +49,34 @@ data Res res = Response
     resId :: Maybe String
   }
 
+type MethodResult = IO (Either String String)
+
+type MethodName = String
+
+data Method = forall a. FromJSON a => Method { runMethod :: a -> MethodResult }
+
+type Methods = [(MethodName, Method)]
+
+class FromJSON a => UnCarriedMethod f a where
+  carryToProcedure :: f -> a -> MethodResult
+
 class FromJSON a => RequestParse a where
   paramsParse :: Value -> Either String a
   paramsParse v = case fromJSON v of
     Error s ->  Left s
     Success p -> Right p
 
+initMethod :: UnCarriedMethod fn a => fn -> a -> MethodResult
+initMethod = carryToProcedure
+
 decodeToReq :: forall a. ByteString -> Either String (Req Value)
 decodeToReq = eitherDecode
 
-toRPCRequest :: forall b. RequestParse b => ByteString -> Either String b
+toRPCRequest :: forall b. RequestParse b => ByteString -> Either String (Req b)
 toRPCRequest body = do
             req <- decodeToReq body
-            paramsParse . params $ req
+            parsedPrms <- paramsParse . params $ req
+            return req { params = parsedPrms }
 
 {- reqBind :: Applicative m => (a -> m b) -> Req -> m Req
 reqBind f (Notification ver method prm) =
@@ -87,6 +103,21 @@ instance FromJSON (Req Value) where
           <*> v .: "params"
   parseJSON _ = mempty
 
+instance (FromJSON a, FromJSON b) => UnCarriedMethod (a -> IO b) a where
+  carryToProcedure f a = do
+                  _ <- f a
+                  return $ Right "good"
+
+instance UnCarriedMethod b [a] => UnCarriedMethod (a -> b) [a] where
+  carryToProcedure f (x:xs) = carryToProcedure (f x) xs
+  carryToProcedure _ _ = return $ Left "too few arguments"
+
+instance FromJSON a => UnCarriedMethod (IO b) [a] where
+  carryToProcedure f [] = do
+                  _ <- f
+                  return $ Right "good"
+  carryToProcedure _ _ = return $ Left "too many arguments"
+
 -- Temporarily type scope with b variable to print result of parsing here
 runWarpServer :: forall b. (Show b, RequestParse b) => Port -> IO ()
 runWarpServer port =
@@ -96,62 +127,12 @@ runWarpServer port =
           let responseSender answer =
                 send (responseBuilder status200 [] answer)
           body <- toLazyByteString . byteString <$> getRequestBodyChunk req
-          print $ toRPCRequest @b body
-          responseSender ""
+          -- print $ toRPCRequest @b body
+          responseSender "done"
    in run port app
-
-type MethodResult = IO (Either String String)
-
-type MethodName = String
-
-data MethodArgs a = ArrArgs [a] | StructArgs a
-
-class FromJSON a => Method f a where
-  carryToProcedure :: f -> a -> MethodResult
-
-instance (FromJSON a, FromJSON b) => Method (a -> IO b) a where
-  carryToProcedure f a = do
-                  _ <- f a
-                  return $ Right "good"
-
-instance Method b [a] => Method (a -> b) [a] where
-  carryToProcedure f (x:xs) = carryToProcedure (f x) xs
-  carryToProcedure _ _ = return $ Left "too few arguments"
-
-instance FromJSON a => Method (IO b) [a] where
-  carryToProcedure f [] = do
-                  _ <- f
-                  return $ Right "good"
-  carryToProcedure _ _ = return $ Left "too many arguments"
-
-data NamePers =
-  NamePers {
-    nameR :: String,
-    ageR :: Integer
-  } deriving Show
-
-instance FromJSON NamePers where
-  parseJSON _ = undefined
-
-changeName :: NamePers -> IO NamePers
-changeName pers = do
-              print pers
-              return pers
-
-add :: Int -> Int -> IO ()
-add x y = do
-          print (x + y)
-
-ex :: [Int] -> MethodResult
-ex = carryToProcedure add
-
-ex1 :: NamePers -> MethodResult
-ex1 = carryToProcedure changeName
 
 {-
 TODO:
-1) Create methods storage & build mechanism of executing them
-and consuming parameters
 2) Take over RequestParse from context of runWarpServer and try to set it to method defining func
   examlpe: method @Ruler \x -> print $ incrementAge x
 3) Take a result of producing result from method calling and build response

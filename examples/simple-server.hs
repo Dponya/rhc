@@ -15,10 +15,11 @@ import Data.Aeson.Types (parseMaybe, (.:), Value(Object), Parser)
 import Network.RHC.Internal.Server
   (
     runWarpServer,
-    RequestParse,
-    paramsParse,
+    RequestParse(..),
     initMethod,
-    MethodResult
+    MethodResult,
+    Methods,
+    Method(..)
   )
 import qualified Data.Vector as DV
 import Network.Wai.Handler.Warp (Port)
@@ -27,6 +28,12 @@ import Data.Aeson (Value(Array))
 
 main :: IO ()
 main = runWarpServer @Ruler 3000
+
+methodsCollection :: Methods
+methodsCollection = [
+    ("example.add", Method @[Int] $ initMethod add),
+    ("example.changeName", Method @ChangeRulerNameReq $ initMethod changeName)
+  ]
 
 data Ruler =
   Ruler {
@@ -65,9 +72,3 @@ changeName (ChangeRulerNameReq {changingPersonId, newName, oldName})
 
 add :: Int -> Int -> IO ()
 add x y = print (x + y)
-
-ex1 :: ChangeRulerNameReq -> MethodResult
-ex1 = initMethod changeName
-
-ex :: [Int] -> MethodResult
-ex = initMethod add
