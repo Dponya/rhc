@@ -1,74 +1,62 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module Main where
 
-import Data.Aeson ((.:), FromJSON, parseJSON)
-import Data.Aeson.Types (parseMaybe, (.:), Value(Object), Parser)
-import Network.RHC.Internal.Server
-  (
-    runWarpServer,
-    RequestParse(..),
-    initMethod,
-    MethodResult,
-    Methods,
-    Method(..)
-  )
+import Data.Aeson (FromJSON, Object, Result (Error, Success), Value (Array), fromJSON, parseJSON, (.:))
+import Data.Aeson.Types (Parser, Value (Object), parseMaybe, (.:))
 import qualified Data.Vector as DV
+import Network.RHC.Internal.Server
+  ( BuildResponse (..),
+    Method,
+    MethodResult,
+    RequestParse (..),
+    runWarpServer,
+  )
 import Network.Wai.Handler.Warp (Port)
-import Data.Aeson (Object)
-import Data.Aeson (Value(Array))
 
 main :: IO ()
-main = runWarpServer @Ruler 3000
+main = runWarpServer @PossibleRequests @PossibleResponses 3000
 
-methodsCollection :: Methods
-methodsCollection = [
-    ("example.add", Method @[Int] $ initMethod add),
-    ("example.changeName", Method @ChangeRulerNameReq $ initMethod changeName)
-  ]
+data PossibleRequests = AddReq [Integer] | CHReq ChangeRulerNameReq
 
-data Ruler =
-  Ruler {
-    personId :: Integer,
-    name :: String
-  } deriving (Show, RequestParse)
+data PossibleResponses = AddRes Integer | CHRes Ruler
 
-data ChangeRulerNameReq =
-  ChangeRulerNameReq {
-    changingPersonId :: Integer,
-    newName :: String,
-    oldName :: String
-  } deriving (Show, RequestParse)
--- RequestParse is necessary for defining your datatype by library
+instance RequestParse PossibleRequests where
+  paramsParse "example.add" =
+    Just
+      (\v -> AddReq <$> parseJSON @[Integer] v)
+  paramsParse "example.changeRulerName" =
+    Just
+      (\v -> CHReq <$> parseJSON @ChangeRulerNameReq v)
+
+instance BuildResponse PossibleRequests PossibleResponses where
+  performMethod (AddReq nums) = return (Right $ AddRes $ sum nums)
+  performMethod (CHReq (ChangeRulerNameReq ident newName _)) =
+    return (Right $ CHRes (Ruler ident newName))
 
 -- instance for parcing (aeson)
 instance FromJSON ChangeRulerNameReq where
   parseJSON (Object obj) = do
-        changingPersonId <- obj .: "changingPersonId"
-        newName <- obj .: "newName"
-        oldName <- obj .: "oldName"
-        return $ ChangeRulerNameReq changingPersonId newName oldName
+    changingPersonId <- obj .: "changingPersonId"
+    newName <- obj .: "newName"
+    oldName <- obj .: "oldName"
+    return $ ChangeRulerNameReq changingPersonId newName oldName
   parseJSON _ = mempty
 
-instance FromJSON Ruler where
-  parseJSON (Object obj) = do
-        personId <- obj .: "personId"
-        name <- obj .: "name"
-        return $ Ruler personId name
-  parseJSON _ = mempty
+data ChangeRulerNameReq = ChangeRulerNameReq
+  { changingPersonId :: Integer,
+    newName :: String,
+    oldName :: String
+  }
 
--- simple methods
-changeName :: ChangeRulerNameReq -> IO Ruler
-changeName (ChangeRulerNameReq {changingPersonId, newName, oldName})
-            = return (Ruler changingPersonId newName)
-
-add :: Int -> Int -> IO ()
-add x y = print (x + y)
+data Ruler = Ruler
+  { personId :: Integer,
+    name :: String
+  }

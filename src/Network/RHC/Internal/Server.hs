@@ -1,21 +1,24 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Network.RHC.Internal.Server where
 
 import Data.Aeson (FromJSON, Object, decode, eitherDecode, encode)
-import Data.Aeson.KeyMap (member, toList)
+import Data.Aeson.KeyMap (member)
+import Data.Aeson.Text (encodeToTextBuilder)
 import Data.Aeson.Types
 import Data.ByteString.Builder (byteString, toLazyByteString)
 import Data.ByteString.Lazy
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Network.HTTP.Types (status200)
 import Network.Wai
   ( Application,
@@ -24,70 +27,57 @@ import Network.Wai
     responseBuilder,
   )
 import Network.Wai.Handler.Warp (Port, run)
-import Data.Aeson.Text (encodeToTextBuilder)
-import GHC.TypeLits
-import Data.Kind (Type)
 
-data Req a
+data Req
   = Notification
-      { resVersion :: String,
+      { resVersion :: Text,
         method :: MethodName,
-        params :: a
+        params :: Value
       }
   | Request
-      { resVersion :: String,
+      { resVersion :: Text,
         method :: MethodName,
-        params :: a,
-        reqId :: String
+        params :: Value,
+        reqId :: Text
       }
-  deriving (Show, Functor)
+  deriving (Show)
 
 data Res res = Response
-  { reqVersion :: String,
+  { reqVersion :: Text,
     result :: Maybe res,
     resError :: Maybe String,
     resId :: Maybe String
   }
 
-type MethodResult = IO (Either String String)
+type MethodResult r = IO (Either Text r)
 
-type MethodName = String
+type MethodName = Text
 
-data Method = forall a. FromJSON a => Method { runMethod :: a -> MethodResult }
+type DecodeError = String
 
-type Methods = [(MethodName, Method)]
+type Method a r = a -> MethodResult r
 
-class FromJSON a => UnCarriedMethod f a where
-  carryToProcedure :: f -> a -> MethodResult
+class RequestParse a where
+  paramsParse :: MethodName -> Maybe (Value -> Parser a)
 
-class FromJSON a => RequestParse a where
-  paramsParse :: Value -> Either String a
-  paramsParse v = case fromJSON v of
-    Error s ->  Left s
-    Success p -> Right p
+class RequestParse a => BuildResponse a r where
+  performMethod :: a -> MethodResult r
 
-initMethod :: UnCarriedMethod fn a => fn -> a -> MethodResult
-initMethod = carryToProcedure
-
-decodeToReq :: forall a. ByteString -> Either String (Req Value)
+decodeToReq :: ByteString -> Either DecodeError Req
 decodeToReq = eitherDecode
 
-toRPCRequest :: forall b. RequestParse b => ByteString -> Either String (Req b)
-toRPCRequest body = do
-            req <- decodeToReq body
-            parsedPrms <- paramsParse . params $ req
-            return req { params = parsedPrms }
+toRPCRequest :: RequestParse a => ByteString -> Maybe a
+toRPCRequest body = case eitherDecode body of
+  Left s -> Nothing
+  Right req -> case paramsParse (method req) of
+    Nothing -> Nothing
+    Just f -> parseMaybe f (params req)
 
-{- reqBind :: Applicative m => (a -> m b) -> Req -> m Req
-reqBind f (Notification ver method prm) =
-  Notification ver method
-    <$> f prm
-reqBind f (Request ver method prm reqId) =
-  Request ver method
-    <$> f prm
-    <*> pure reqId -}
+responder :: (RequestParse a, BuildResponse a r) => Maybe a -> MethodResult r
+responder (Just prm) = performMethod prm
+responder _ = return $ Left "Nothing happened"
 
-instance FromJSON (Req Value) where
+instance FromJSON Req where
   parseJSON (Object v) =
     if member "id" v
       then
@@ -103,23 +93,7 @@ instance FromJSON (Req Value) where
           <*> v .: "params"
   parseJSON _ = mempty
 
-instance (FromJSON a, FromJSON b) => UnCarriedMethod (a -> IO b) a where
-  carryToProcedure f a = do
-                  _ <- f a
-                  return $ Right "good"
-
-instance UnCarriedMethod b [a] => UnCarriedMethod (a -> b) [a] where
-  carryToProcedure f (x:xs) = carryToProcedure (f x) xs
-  carryToProcedure _ _ = return $ Left "too few arguments"
-
-instance FromJSON a => UnCarriedMethod (IO b) [a] where
-  carryToProcedure f [] = do
-                  _ <- f
-                  return $ Right "good"
-  carryToProcedure _ _ = return $ Left "too many arguments"
-
--- Temporarily type scope with b variable to print result of parsing here
-runWarpServer :: forall b. (Show b, RequestParse b) => Port -> IO ()
+runWarpServer :: forall a r. (BuildResponse a r) => Port -> IO ()
 runWarpServer port =
   let app :: Application
       app req send =
@@ -128,12 +102,6 @@ runWarpServer port =
                 send (responseBuilder status200 [] answer)
           body <- toLazyByteString . byteString <$> getRequestBodyChunk req
           -- print $ toRPCRequest @b body
+          result <- responder @a @r (toRPCRequest body)
           responseSender "done"
    in run port app
-
-{-
-TODO:
-2) Take over RequestParse from context of runWarpServer and try to set it to method defining func
-  examlpe: method @Ruler \x -> print $ incrementAge x
-3) Take a result of producing result from method calling and build response
--}
