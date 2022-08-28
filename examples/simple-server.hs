@@ -13,8 +13,8 @@ import Data.Aeson (FromJSON, Object, Result (Error, Success), Value (Array), fro
 import Data.Aeson.Types (Parser, Value (Object), parseMaybe, (.:))
 import qualified Data.Vector as DV
 import Network.RHC.Internal.Server
-  ( BuildResponse (..),
-    Method,
+  (
+    MethodPerform (..),
     MethodResult,
     RequestParse (..),
     runWarpServer,
@@ -30,15 +30,15 @@ data PossibleResponses = AddRes Integer | CHRes Ruler
 
 instance RequestParse PossibleRequests where
   paramsParse "example.add" =
-    Just
-      (\v -> AddReq <$> parseJSON @[Integer] v)
+    Just (\v -> AddReq <$> parseJSON @[Integer] v)
   paramsParse "example.changeRulerName" =
-    Just
-      (\v -> CHReq <$> parseJSON @ChangeRulerNameReq v)
+    Just (\v -> CHReq <$> parseJSON @ChangeRulerNameReq v)
+  paramsParse _ = Nothing
 
-instance BuildResponse PossibleRequests PossibleResponses where
-  performMethod (AddReq nums) = return (Right $ AddRes $ sum nums)
-  performMethod (CHReq (ChangeRulerNameReq ident newName _)) =
+instance MethodPerform PossibleRequests PossibleResponses where
+  performMethod "example.add" (AddReq nums) = return (Right $ AddRes $ sum nums)
+  performMethod "example.changeRulerName"
+      (CHReq (ChangeRulerNameReq ident newName _)) =
     return (Right $ CHRes (Ruler ident newName))
 
 -- instance for parcing (aeson)

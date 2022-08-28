@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,6 +12,7 @@
 
 module Network.RHC.Internal.Server where
 
+import Control.Monad
 import Data.Aeson (FromJSON, Object, decode, eitherDecode, encode)
 import Data.Aeson.KeyMap (member)
 import Data.Aeson.Text (encodeToTextBuilder)
@@ -42,40 +44,52 @@ data Req
       }
   deriving (Show)
 
-data Res res = Response
+{- data Res res = Response
   { reqVersion :: Text,
     result :: Maybe res,
     resError :: Maybe String,
     resId :: Maybe String
+  }
+-}
+
+data ParsedRequest a = ParsedRequest
+  { requestId :: Maybe Text,
+    parsedParams :: a,
+    methodName :: MethodName
   }
 
 type MethodResult r = IO (Either Text r)
 
 type MethodName = Text
 
-type DecodeError = String
-
-type Method a r = a -> MethodResult r
-
 class RequestParse a where
   paramsParse :: MethodName -> Maybe (Value -> Parser a)
 
-class RequestParse a => BuildResponse a r where
-  performMethod :: a -> MethodResult r
+class RequestParse a => MethodPerform a r where
+  performMethod :: MethodName -> a -> MethodResult r
 
-decodeToReq :: ByteString -> Either DecodeError Req
-decodeToReq = eitherDecode
+toParsedRequest :: Req -> a -> ParsedRequest a
+toParsedRequest (Notification { method }) prm =
+  ParsedRequest Nothing prm method
+toParsedRequest (Request { reqId, method }) prm =
+  ParsedRequest (Just reqId) prm method
 
-toRPCRequest :: RequestParse a => ByteString -> Maybe a
-toRPCRequest body = case eitherDecode body of
-  Left s -> Nothing
-  Right req -> case paramsParse (method req) of
-    Nothing -> Nothing
-    Just f -> parseMaybe f (params req)
+parseRequest ::
+  forall a.
+  (RequestParse a, FromJSON a) =>
+  ByteString ->
+  Either String (ParsedRequest a)
+parseRequest body = do
+  req <- eitherDecode body
+  f <- case paramsParse @a (method req) of
+    Nothing -> Left "Method Not Found"
+    Just f -> Right f
+  prms <- parseEither f (params req)
+  return (toParsedRequest req prms)
 
-responder :: (RequestParse a, BuildResponse a r) => Maybe a -> MethodResult r
-responder (Just prm) = performMethod prm
-responder _ = return $ Left "Nothing happened"
+responder :: MethodPerform a r => ParsedRequest a -> MethodResult r
+responder (ParsedRequest { requestId, parsedParams, methodName }) =
+  performMethod methodName parsedParams
 
 instance FromJSON Req where
   parseJSON (Object v) =
@@ -93,7 +107,7 @@ instance FromJSON Req where
           <*> v .: "params"
   parseJSON _ = mempty
 
-runWarpServer :: forall a r. (BuildResponse a r) => Port -> IO ()
+runWarpServer :: forall a r. (MethodPerform a r) => Port -> IO ()
 runWarpServer port =
   let app :: Application
       app req send =
@@ -102,6 +116,6 @@ runWarpServer port =
                 send (responseBuilder status200 [] answer)
           body <- toLazyByteString . byteString <$> getRequestBodyChunk req
           -- print $ toRPCRequest @b body
-          result <- responder @a @r (toRPCRequest body)
+          --result <- responder @a @r (parseRequest body)
           responseSender "done"
    in run port app
