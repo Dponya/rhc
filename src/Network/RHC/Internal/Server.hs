@@ -92,7 +92,8 @@ parseReqBody body =
 
 getPrmParser ::
   forall a.
-  RequestParse a => Req ->
+  RequestParse a =>
+  Req ->
   Either ErrorObject (Value -> Parser a)
 getPrmParser req = case paramsParse @a (method req) of
   Nothing -> Left $ ErrorObject MethodNotFound ("Method " ++ method req ++ " Not Found")
@@ -113,16 +114,6 @@ parseRequest body = do
   f <- getPrmParser req
   prms <- parseReqPrm f (params req)
   return (req, prms)
-
-{- buildResponse :: MethodPerform a r => ParsedReq a -> r -> Res r
-buildResponse
-  ( ParsedRequest
-      ver
-      rId
-      prm
-      mtd
-    )
-  result = Response ver (Just result) Nothing rId -}
 
 responder :: forall a r. MethodPerform a => (Req, a) -> IO (Maybe Res)
 responder (Notif ver mtd _, prm) = performMethod mtd prm >> return Nothing
@@ -157,16 +148,16 @@ instance ToJSON Res where
         "id" .= rId
       ]
   toJSON (ResError ver err rId) =
-    object [
-      "jsonrpc" .= ver,
-      "error" .= err,
-      "id" .= rId
-    ]
+    object
+      [ "jsonrpc" .= ver,
+        "error" .= err,
+        "id" .= rId
+      ]
   toJSON (ResSystemError ver err) =
-    object [
-      "jsonrpc" .= ver,
-      "error" .= err
-    ]
+    object
+      [ "jsonrpc" .= ver,
+        "error" .= err
+      ]
 
 instance ToJSON ErrorCause where
   toJSON ParseError = toJSON @Integer (-32700)
@@ -174,21 +165,21 @@ instance ToJSON ErrorCause where
   toJSON MethodNotFound = toJSON @Integer (-32601)
   toJSON InvalidParams = toJSON @Integer (-32602)
   toJSON InternalError = toJSON @Integer (-32603)
-  toJSON (ServerError num) =  toJSON num
+  toJSON (ServerError num) = toJSON num
 
 instance ToJSON ErrorObject where
   toJSON (ErrorObject code msg) =
-    object [
-      "code" .= code,
-      "message" .= msg
-    ]
+    object
+      [ "code" .= code,
+        "message" .= msg
+      ]
   toJSON
     (ErrorObjectAdditional code msg additional) =
-      object [
-        "code" .= code,
-        "message" .= msg,
-        "data" .= additional
-      ]
+      object
+        [ "code" .= code,
+          "message" .= msg,
+          "data" .= additional
+        ]
 
 runWarpServer :: forall a. (MethodPerform a) => Port -> IO ()
 runWarpServer port =
@@ -199,7 +190,7 @@ runWarpServer port =
                 send (responseBuilder status200 [(hContentType, "application/json")] answer)
           p <- parseRequest @a <$> (toLazyByteString . byteString <$> getRequestBodyChunk req)
           case p of
-            Left s   -> responseSender ( byteString . toStrict . encode $ s)
+            Left s -> responseSender (byteString . toStrict . encode $ s)
             Right pr -> do
               result <- responder @a pr
               case result of
