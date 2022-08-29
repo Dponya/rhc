@@ -34,12 +34,12 @@ instance RequestParse PossibleRequests where
   paramsParse _ = Nothing
 
 instance MethodPerform PossibleRequests where
-  performMethod "example.add" 
-      (AddReq nums) = return . toJSON . sum $ nums
+  performMethod "example.add"
+      (AddReq nums) = return . Right . toJSON . sum $ nums
   
   performMethod "example.changeRulerName"
       (CHReq (ChangeRulerNameReq ident newName _)) =
-    (Right $ toJSON (Ruler ident newName))
+    (return . Right $ toJSON (Ruler ident newName))
 
 -- instance for parcing (aeson)
 instance FromJSON ChangeRulerNameReq where

@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -41,7 +40,6 @@ data Req
         params :: Value,
         reqId :: String
       }
-  deriving (Show)
 
 data Res
   = ResSuccess
@@ -51,24 +49,32 @@ data Res
       }
   | ResError
       { resVersion :: String,
-        resError :: [String],
+        resError :: ErrorObject,
         resId :: String
       }
   | ResSystemError
       { resVersion :: String,
-        resError :: [String]
+        resError :: ErrorObject
       }
-  deriving (Show)
 
-data ErrorObject
+data ErrorCause
   = ParseError
   | InvalidRequest
   | MethodNotFound
   | InvalidParams
   | InternalError
-  | ServerError
+  | ServerError Integer
 
--- type MethodResult r = IO (Either String r)
+data ErrorObject
+  = ErrorObject
+      { code :: ErrorCause,
+        message :: String
+      }
+  | ErrorObjectAdditional
+      { code :: ErrorCause,
+        message :: String,
+        additional :: Value
+      }
 
 type MethodName = String
 
@@ -76,19 +82,36 @@ class RequestParse a where
   paramsParse :: MethodName -> Maybe (Value -> Parser a)
 
 class RequestParse a => MethodPerform a where
-  performMethod :: MethodName -> a -> Either ErrorObject Value
+  performMethod :: MethodName -> a -> IO (Either ErrorObject Value)
+
+parseReqBody :: ByteString -> Either ErrorObject Req
+parseReqBody body =
+  case eitherDecode body of
+    Left s -> Left $ ErrorObject ParseError s
+    Right r -> Right r
+
+getPrmParser ::
+  forall a.
+  RequestParse a => Req ->
+  Either ErrorObject (Value -> Parser a)
+getPrmParser req = case paramsParse @a (method req) of
+  Nothing -> Left $ ErrorObject MethodNotFound ("Method " ++ method req ++ " Not Found")
+  Just f -> Right f
+
+parseReqPrm :: (Value -> Parser a) -> Value -> Either ErrorObject a
+parseReqPrm f prm = case parseEither f prm of
+  Left s -> Left $ ErrorObject InvalidParams s
+  Right a -> Right a
 
 parseRequest ::
   forall a.
-  (RequestParse a) =>
+  RequestParse a =>
   ByteString ->
-  Either String (Req, a)
+  Either ErrorObject (Req, a)
 parseRequest body = do
-  req <- eitherDecode body ---- There's have skipped systemError handlings
-  f <- case paramsParse @a (method req) of
-    Nothing -> Left "Method not Found"
-    Just f -> Right f
-  prms <- parseEither f (params req)
+  req <- parseReqBody body
+  f <- getPrmParser req
+  prms <- parseReqPrm f (params req)
   return (req, prms)
 
 {- buildResponse :: MethodPerform a r => ParsedReq a -> r -> Res r
@@ -101,14 +124,14 @@ buildResponse
     )
   result = Response ver (Just result) Nothing rId -}
 
-responder :: forall a r. MethodPerform a => (Req, a) -> IO Res
-responder (req, prm) = case performMethod (method req) prm of
-  Left s -> undefined
-  Right va -> return $ ResSuccess (reqVersion req) va (reqId req)
-
-{-
-
--}
+responder :: forall a r. MethodPerform a => (Req, a) -> IO (Maybe Res)
+responder (Notif ver mtd _, prm) = performMethod mtd prm >> return Nothing
+responder (Req ver mtd _ rId, prm) =
+  do
+    res <- performMethod mtd prm
+    case res of
+      Left eo -> return . Just $ ResError ver eo rId
+      Right va -> return . Just $ ResSuccess ver va rId
 
 instance FromJSON Req where
   parseJSON (Object v) =
@@ -133,8 +156,41 @@ instance ToJSON Res where
         "result" .= result,
         "id" .= rId
       ]
+  toJSON (ResError ver err rId) =
+    object [
+      "jsonrpc" .= ver,
+      "error" .= err,
+      "id" .= rId
+    ]
+  toJSON (ResSystemError ver err) =
+    object [
+      "jsonrpc" .= ver,
+      "error" .= err
+    ]
 
-runWarpServer :: forall a . (MethodPerform a) => Port -> IO ()
+instance ToJSON ErrorCause where
+  toJSON ParseError = toJSON @Integer (-32700)
+  toJSON InvalidRequest = toJSON @Integer (-32600)
+  toJSON MethodNotFound = toJSON @Integer (-32601)
+  toJSON InvalidParams = toJSON @Integer (-32602)
+  toJSON InternalError = toJSON @Integer (-32603)
+  toJSON (ServerError num) =  toJSON num
+
+instance ToJSON ErrorObject where
+  toJSON (ErrorObject code msg) =
+    object [
+      "code" .= code,
+      "message" .= msg
+    ]
+  toJSON
+    (ErrorObjectAdditional code msg additional) =
+      object [
+        "code" .= code,
+        "message" .= msg,
+        "data" .= additional
+      ]
+
+runWarpServer :: forall a. (MethodPerform a) => Port -> IO ()
 runWarpServer port =
   let app :: Application
       app req send =
@@ -143,9 +199,10 @@ runWarpServer port =
                 send (responseBuilder status200 [(hContentType, "application/json")] answer)
           p <- parseRequest @a <$> (toLazyByteString . byteString <$> getRequestBodyChunk req)
           case p of
-            Left s -> undefined
+            Left s   -> responseSender ( byteString . toStrict . encode $ s)
             Right pr -> do
               result <- responder @a pr
-              responseSender (byteString . toStrict . encode $ result)
-          responseSender "done"
+              case result of
+                Nothing -> responseSender (byteString . toStrict . encode $ toJSON ())
+                Just res -> responseSender (byteString . toStrict . encode $ res)
    in run port app
