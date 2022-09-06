@@ -25,7 +25,6 @@ import Network.Wai
     responseBuilder,
   )
 import Network.Wai.Handler.Warp (InvalidRequest, Port, run)
-import Control.Monad.Identity (Identity)
 
 data Req
   = Notif
