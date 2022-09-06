@@ -10,14 +10,12 @@
 
 module Network.RHC.Internal.Server where
 
-import Control.Monad
 import Data.Aeson (FromJSON, Object, decode, eitherDecode, encode)
 import Data.Aeson.KeyMap (member)
-import Data.Aeson.Text (encodeToTextBuilder)
 import Data.Aeson.Types
-import Data.ByteString.Builder (byteString, toLazyByteString)
+import Data.ByteString.Builder (byteString, toLazyByteString, Builder)
 import Data.ByteString.Lazy
-import Data.Text (Text)
+import Data.Bifunctor
 import Network.HTTP.Types (status200)
 import Network.HTTP.Types.Header (hContentType)
 import Network.Wai
@@ -27,6 +25,7 @@ import Network.Wai
     responseBuilder,
   )
 import Network.Wai.Handler.Warp (InvalidRequest, Port, run)
+import Control.Monad.Identity (Identity)
 
 data Req
   = Notif
@@ -85,10 +84,7 @@ class RequestParse a => MethodPerform a where
   performMethod :: MethodName -> a -> IO (Either ErrorObject Value)
 
 parseReqBody :: ByteString -> Either ErrorObject Req
-parseReqBody body =
-  case eitherDecode body of
-    Left s -> Left $ ErrorObject ParseError s
-    Right r -> Right r
+parseReqBody = first (ErrorObject ParseError) . eitherDecode
 
 getPrmParser ::
   forall a.
@@ -100,9 +96,7 @@ getPrmParser req = case paramsParse @a (method req) of
   Just f -> Right f
 
 parseReqPrm :: (Value -> Parser a) -> Value -> Either ErrorObject a
-parseReqPrm f prm = case parseEither f prm of
-  Left s -> Left $ ErrorObject InvalidParams s
-  Right a -> Right a
+parseReqPrm f val = first (ErrorObject InvalidParams) (parseEither f val)
 
 parseRequest ::
   forall a.
@@ -181,19 +175,29 @@ instance ToJSON ErrorObject where
           "data" .= additional
         ]
 
+app :: forall a. (MethodPerform a) => Application
+app req send = do
+  let toBuilder :: forall a. ToJSON a => a -> Builder
+      toBuilder = byteString . toStrict . encode
+
+      parsedIORequest = parseRequest @a  .
+                        toLazyByteString .
+                        byteString      <$>
+                        getRequestBodyChunk req
+
+      notifyResult = ()
+
+      responseSender answer =
+        send (responseBuilder status200 [(hContentType, "application/json")] answer)
+
+  prsReq <- parsedIORequest
+  case prsReq of
+    Left s -> responseSender (toBuilder s)
+    Right pr -> do
+      result <- responder @a pr
+      case result of
+        Nothing -> responseSender (toBuilder . toJSON $ notifyResult)
+        Just res -> responseSender (toBuilder res)
+
 runWarpServer :: forall a. (MethodPerform a) => Port -> IO ()
-runWarpServer port =
-  let app :: Application
-      app req send =
-        do
-          let responseSender answer =
-                send (responseBuilder status200 [(hContentType, "application/json")] answer)
-          p <- parseRequest @a <$> (toLazyByteString . byteString <$> getRequestBodyChunk req)
-          case p of
-            Left s -> responseSender (byteString . toStrict . encode $ s)
-            Right pr -> do
-              result <- responder @a pr
-              case result of
-                Nothing -> responseSender (byteString . toStrict . encode $ toJSON ())
-                Just res -> responseSender (byteString . toStrict . encode $ res)
-   in run port app
+runWarpServer port = run port (app @a)
