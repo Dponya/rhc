@@ -1,69 +1,27 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
 import Data.Aeson
 import Data.Aeson.Types
-import Network.RHC.Internal.Server
-  (
-    MethodPerform (..),
-    RequestParse (..),
-    runWarpServer,
+import Network.RHC.Internal.RPCErrors(
+    ErrorObject(..),
+    ErrorCause(ServerError)
   )
 import Network.Wai.Handler.Warp (Port)
+import Network.RHC.Internal.Inspector (injectMethods)
+import Network.RHC.Internal.RPCCommon (RemoteAction)
+import Language.Haskell.TH(runQ)
+import Control.Monad.IO.Class
+import Network.RHC.Internal.Server (executeDecoded)
+
+doSome :: RemoteAction [Int] Int
+doSome (x:x2:xs) = liftIO $ print x >> pure (x + x2)
+doSome xs = liftIO $ print xs >> pure 0 
+
+injectMethods [
+  ("example.doSome", 'doSome)
+  ]
 
 main :: IO ()
-main = runWarpServer @PossibleRequests 3000
-
-data PossibleRequests = AddReq [Integer] | CHReq ChangeRulerNameReq
-
--- data PossibleResponses = AddRes Integer | CHRes Ruler
-
-instance RequestParse PossibleRequests where
-  paramsParse "example.add" =
-    Just (\v -> AddReq <$> parseJSON @[Integer] v)
-  paramsParse "example.changeRulerName" =
-    Just (\v -> CHReq <$> parseJSON @ChangeRulerNameReq v)
-  paramsParse _ = Nothing
-
-instance MethodPerform PossibleRequests where
-  performMethod "example.add"
-      (AddReq nums) = return . Right . toJSON . sum $ nums
-  
-  performMethod "example.changeRulerName"
-      (CHReq (ChangeRulerNameReq ident newName _)) =
-    (return . Right $ toJSON (Ruler ident newName))
-
--- instance for parcing (aeson)
-instance FromJSON ChangeRulerNameReq where
-  parseJSON (Object obj) = do
-    changingPersonId <- obj .: "changingPersonId"
-    newName <- obj .: "newName"
-    oldName <- obj .: "oldName"
-    return $ ChangeRulerNameReq changingPersonId newName oldName
-  parseJSON _ = mempty
-
-instance ToJSON Ruler where
-  toJSON (Ruler personId name) =
-    object [
-      "personId" .= personId,
-      "name" .= name
-    ]
-
-data ChangeRulerNameReq = ChangeRulerNameReq
-  { changingPersonId :: Integer,
-    newName :: String,
-    oldName :: String
-  }
-
-data Ruler = Ruler
-  { personId :: Integer,
-    name :: String
-  }
+main = serv 3000
