@@ -8,8 +8,10 @@ import Control.Monad.Catch
 import Data.Aeson (FromJSON, Object)
 import Data.Aeson.Types
 import Data.Aeson.KeyMap (member)
+import Network.RHC.Internal.RPCErrors
+import Data.Void
 
-newtype RemoteEnv = Env {
+newtype RemoteEnv = RemoteEnv {
     table :: RemoteTable
   }
 
@@ -20,11 +22,13 @@ newtype RPC a = RPC { runRPC :: ReaderT RemoteEnv IO a }
       MonadThrow, MonadCatch
     )
 
+type ActionResponse = Value
+
 type RemoteAction a b = a -> RPC b
 
 type RemoteActionName = String
 
-type RemoteTable = [(RemoteActionName, RemoteAction ByteString ByteString)]
+type RemoteTable = [(RemoteActionName, RemoteAction ByteString ActionResponse)]
 
 data Req
   = Notif
@@ -38,6 +42,26 @@ data Req
         params :: Value,
         reqId :: Integer
       } deriving Show
+
+data Res
+  = ResSuccess
+      { resVersion :: String,
+        result :: Value,
+        resId :: Integer
+      }
+  | ResError
+      { resVersion :: String,
+        resError :: ErrorObject,
+        resId :: Integer
+      }
+  | ResSystemError
+      { resVersion :: String,
+        resError :: ErrorObject
+      }
+  | ResVoid
+      {
+        void :: ()
+      }
 
 instance FromJSON Req where
   parseJSON (Object v) =
@@ -55,18 +79,22 @@ instance FromJSON Req where
           <*> v .: "params"
   parseJSON _ = mempty
 
-{- data Res
-  = ResSuccess
-      { resVersion :: String,
-        result :: Value,
-        resId :: String
-      }
-  | ResError
-      { resVersion :: String,
-        resError :: ErrorObject,
-        resId :: String
-      }
-  | ResSystemError
-      { resVersion :: String,
-        resError :: ErrorObject
-      } -}
+instance ToJSON Res where
+  toJSON (ResSuccess ver result rId) =
+    object
+      [ "jsonrpc" .= ver,
+        "result" .= result,
+        "id" .= rId
+      ]
+  toJSON (ResError ver err rId) =
+    object
+      [ "jsonrpc" .= ver,
+        "error" .= err,
+        "id" .= rId
+      ]
+  toJSON (ResSystemError ver err) =
+    object
+      [ "jsonrpc" .= ver,
+        "error" .= err
+      ]
+  toJSON (ResVoid ()) = object []
