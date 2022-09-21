@@ -23,7 +23,10 @@ data ErrorObject
       { code :: ErrorCause,
         message :: String,
         additional :: Value
-      }
+      } deriving (Show, Exception)
+
+errObject :: ErrorCause -> ErrorObject
+errObject cause = ErrorObject cause (show cause)
 
 instance Show ErrorCause where
   show ParseError = "Invalid JSON was received by the server. \
