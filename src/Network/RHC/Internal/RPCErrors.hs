@@ -6,10 +6,12 @@ module Network.RHC.Internal.RPCErrors where
 import Data.Aeson
 import Control.Exception (Exception)
 
+type ReqId = Integer
+
 data ErrorCause
   = ParseError
   | InvalidRequest
-  | MethodNotFound
+  | MethodNotFound ReqId
   | InvalidParams
   | InternalError
   | ServerError Int deriving Exception
@@ -32,7 +34,7 @@ instance Show ErrorCause where
   show ParseError = "Invalid JSON was received by the server. \
     \An error occurred on the server while parsing the JSON text."
   show InvalidRequest = "The JSON sent is not a valid Request object."
-  show MethodNotFound = "The method does not exist / is not available."
+  show (MethodNotFound _) = "The method does not exist / is not available."
   show InvalidParams = "Invalid method parameter(s)."
   show InternalError = "Internal JSON-RPC error."
   show (ServerError a) = show a
@@ -40,7 +42,7 @@ instance Show ErrorCause where
 instance ToJSON ErrorCause where
   toJSON ParseError = toJSON @Integer (-32700)
   toJSON InvalidRequest = toJSON @Integer (-32600)
-  toJSON MethodNotFound = toJSON @Integer (-32601)
+  toJSON (MethodNotFound _) = toJSON @Integer (-32601)
   toJSON InvalidParams = toJSON @Integer (-32602)
   toJSON InternalError = toJSON @Integer (-32603)
   toJSON (ServerError num) = toJSON num
