@@ -26,9 +26,12 @@ import Control.Monad.Catch
 import Data.Either
 import Control.Monad.Reader (ReaderT(..))
 import Network.RHC.Internal.RPCCommon
-import Data.Aeson.KeyMap (member, toList)
+import qualified Data.Aeson.KeyMap as KM 
 import GHC.IO.Exception (IOErrorType(SystemError))
+import qualified Data.Vector as V
 import Control.Monad.IO.Class
+import qualified Data.Text as T
+import Data.Maybe (fromMaybe)
 
 type RPCVersion = String
 
@@ -72,7 +75,7 @@ data Res
 
 instance FromJSON Req where
   parseJSON (Object v) =
-    if member "id" v
+    if KM.member "id" v
       then
         Req
           <$> v .: "jsonrpc"
@@ -113,19 +116,10 @@ instance ToJSON Res where
       ]
   toJSON (ResVoid ()) = Null
 
-executeDecoded :: forall a b.
-  (FromJSON a, ToJSON b) =>
-  RemoteAction a b ->
-  RemoteAction ByteString ActionResponse
-executeDecoded fun args =
-  case eitherDecode args of
-    Left s -> throwM InvalidParams
-    Right prm -> fun prm >>= pure . toJSON
-
 handleRequest :: Req -> RPC ActionResponse
 handleRequest req =
   do
-    let action name table = maybe (throwM (MethodNotFound (reqId req))) pure (lookup name table)
+    let action name table = maybe (throwM MethodNotFound) pure (lookup name table)
     (RemoteEnv table) <- ask
     f   <- action (method req) table
     f (encode . params $ req)
@@ -134,68 +128,86 @@ buildResponse :: Req -> ActionResponse -> Res
 buildResponse Notif {} res = ResVoid ()
 buildResponse (Req _ _ _ rId) result = ResSuccess "2.0" result rId
 
-buildWithoutId :: ErrorCause -> Res
-buildWithoutId e = ResErrsWithoutId ver (errObject e)
+catchParseErrs :: ErrorParseCause -> IO Value
+catchParseErrs e = pure $ toJSON build
   where
-    ver = "2.0"
+    build = ResErrsWithoutId "2.0" (errObject (ErrorParseCause e))
 
-buildWithId :: Integer -> ErrorCause -> Res
-buildWithId rId e = ResErrsWithId ver (errObject e) rId
+userDefinedHandler :: ErrorObject -> RPC Value
+userDefinedHandler obj = pure $ toJSON $ buildFromUser obj
+
+executionErrHandler :: ErrorExecutionCause -> Req -> RPC Value
+executionErrHandler e req = pure $ toJSON $ buildWithId (ErrorExecutionCause e) req
   where
-    ver = "2.0"
+    buildWithId :: ErrorCause -> Req -> Res
+    buildWithId e Notif {} = ResVoid ()
+    buildWithId e (Req _ _ _ rId) = ResErrsWithId "2.0" (errObject e) rId
+
+systemErrHandler :: IOException -> IO Value
+systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalError)
+  where
+    buildWithoutId :: ErrorCause -> Res
+    buildWithoutId e = ResErrsWithoutId "2.0" (errObject e)
 
 buildFromUser :: ErrorObject -> Res
 buildFromUser obj = ResErrsWithoutId "2.0" obj
 
-parseRequest :: ByteString -> RPC (Either [Req] Req)
+jsonToReq :: Value -> Maybe Req
+jsonToReq (Object o) =
+  do String ver <- KM.lookup "jsonrpc" o
+     String mtd <- KM.lookup "method" o
+     params <- KM.lookup "params" o
+     case KM.member "id" o of
+       False -> pure (Notif (T.unpack ver) (T.unpack mtd) params)
+       True -> do
+        valId <- KM.lookup "id" o
+        case fromJSON valId of
+          Error s -> Nothing
+          Success reqId -> pure (Req (T.unpack ver) (T.unpack mtd) params reqId)
+jsonToReq _ = Nothing
+
+traverseBatchReq :: Value -> [Maybe Req]
+traverseBatchReq val@(Array ar) = fmap jsonToReq (V.toList ar)
+traverseBatchReq _ = [Nothing]
+
+parseRequest :: ByteString -> RPC (Either [Maybe Req] Req)
 parseRequest body = case eitherDecode @Value body of
   Left s -> throwM ParseError
-  Right val@(Array v) -> case parseEither @_ @[Req] parseJSON val of
-    Left s -> throwM InvalidRequest
-    Right reqs -> pure $ Left reqs
+  Right val@(Array v) -> pure $ Left $ traverseBatchReq val
   Right val@(Object v) -> case parseEither parseJSON val of
       Left s -> throwM InvalidRequest
-      Right any -> pure $ Right any
-  Right _ -> throwM InvalidRequest
+      Right obj -> pure $ Right obj
+  Right _ -> throwM ParseError
 
 processRPC :: ByteString -> RPC Value
 processRPC bs = do
-  parsed <- parseRequest bs
+  parsed <- (parseRequest bs)
   case parsed of
     Left reqs -> toJSON <$> batchPerform reqs
     Right req -> toJSON <$> singlePerform req
 
-batchPerform :: [Req] -> RPC [Res]
+batchPerform :: [Maybe Req] -> RPC [Value]
 batchPerform = traverse execute
   where
-    execute req = buildResponse req <$> handleRequest req
+    execute (Just req) = (toJSON . buildResponse req <$> handleRequest req)
+      `catches` [
+        Handler userDefinedHandler,
+        Handler $ flip executionErrHandler req
+      ]
+    execute Nothing = pure . toJSON $ build
+    build = ResErrsWithoutId "2.0" (errObject (ErrorParseCause InvalidRequest))
 
-singlePerform :: Req -> RPC Res
-singlePerform req = buildResponse req <$> handleRequest req
+singlePerform :: Req -> RPC Value
+singlePerform req
+  = (toJSON . buildResponse req <$> handleRequest req)
+    `catches` [Handler $ flip executionErrHandler req]
 
 mainThread :: ByteString -> RemoteTable -> IO Value
 mainThread body table = executeRPC body env
-  `catches`
-  [
-      Handler systemErrHandler,
-      Handler userDefinedHandler,
-      Handler parseErrHandler
-    ]
+  `catches` [Handler catchParseErrs, Handler systemErrHandler]
   where
     env = RemoteEnv table
-    performAction req = runReaderT (runRPC . handleRequest $ req)
     executeRPC bs = runReaderT (runRPC . processRPC $ bs)
-
-    parseErrHandler :: ErrorCause -> IO Value
-    parseErrHandler InvalidRequest = pure $ toJSON $ buildWithoutId InvalidRequest
-    parseErrHandler ParseError = pure $ toJSON $ buildWithoutId ParseError
-    parseErrHandler e = undefined
-
-    systemErrHandler :: IOException -> IO Value
-    systemErrHandler _ = pure $ toJSON $ buildWithoutId InternalError
-
-    userDefinedHandler :: ErrorObject -> IO Value
-    userDefinedHandler obj = pure $ toJSON $ buildFromUser obj
 
 runWarp :: Port -> RemoteTable -> IO ()
 runWarp port table = run port app
