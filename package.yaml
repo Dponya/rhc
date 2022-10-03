@@ -31,6 +31,7 @@ dependencies:
 - mtl        >= 2.2.2 && < 2.3
 - exceptions >= 0.10.4 && < 0.11
 - vector     >= 0.12 && < 0.14
+- req        >= 3.10.0 && < 3.14
 
 library:
   source-dirs: src
@@ -41,6 +42,11 @@ executables:
       - rhc
       - aeson >= 2.0.3.0 && < 2.0.4.0
       - template-haskell >= 2.16.0 && <2.20
+  simple-client:
+    main: examples/simple-client.hs
+    dependencies:
+      - rhc
+      - req >= 3.10.0 && < 3.14
 tests:
   rhc-test:
     main:                Spec.hs
