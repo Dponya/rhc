@@ -14,7 +14,7 @@ import Network.RHC.Internal.Inspector (injectMethods)
 import Network.RHC.Internal.RPCCommon (RemoteAction)
 import Language.Haskell.TH(runQ)
 import Control.Monad.IO.Class
-import Network.RHC.Internal.Utils (executeDecoded)
+import Network.RHC.Internal.Utils (executeDecoded, sendDomains)
 import Control.Monad.Catch (MonadThrow(throwM))
 
 doSome :: RemoteAction [Int] Int
