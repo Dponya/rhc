@@ -25,7 +25,14 @@ injectMethods :: [(String, Name)] -> Q [Dec]
 injectMethods names =
   [d|
     serv :: Port -> IO ()
-    serv port = runWarp port $(generateTable names)
+    serv port = runWarp port
+      (
+        (
+          $(packSenderDomains (generateTable names))
+        ) :
+          $(generateTable names)
+      
+      )
   |]
 
 generateTable :: [(String, Name)] -> ExpQ
@@ -33,3 +40,9 @@ generateTable names = listE $ fmap attachAction names
   where
     attachAction :: (String, Name) -> ExpQ
     attachAction (s, n) = [|(s, $(dyn "executeDecoded") $ $(dyn . show $ n))|]
+
+packSenderDomains :: ExpQ -> ExpQ
+packSenderDomains xs = [| $(tuple) |]
+  where
+    tuple = [| ("sendDomains", $(dyn "executeDecoded") $ $(dynamicApplied))|]
+    dynamicApplied = [| $(dyn "sendDomains") $ $(xs) |]

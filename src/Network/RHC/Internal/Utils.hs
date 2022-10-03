@@ -15,3 +15,6 @@ executeDecoded fun args =
   case eitherDecode args of
     Left s -> throwM InvalidParams
     Right prm -> fun prm >>= pure . toJSON
+
+sendDomains :: RemoteTable -> RemoteAction [String] DomainMethods
+sendDomains table = undefined
