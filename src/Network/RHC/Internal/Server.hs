@@ -158,12 +158,12 @@ jsonToReq (Object o) =
      String mtd <- KM.lookup "method" o
      params <- KM.lookup "params" o
      case KM.member "id" o of
-       False -> pure (Notif (T.unpack ver) (T.unpack mtd) params)
+       False -> pure (Notif (T.unpack ver) (mtd) params)
        True -> do
         valId <- KM.lookup "id" o
         case fromJSON valId of
           Error s -> Nothing
-          Success reqId -> pure (Req (T.unpack ver) (T.unpack mtd) params reqId)
+          Success reqId -> pure (Req (T.unpack ver) (mtd) params reqId)
 jsonToReq _ = Nothing
 
 traverseBatchReq :: Value -> [Maybe Req]
