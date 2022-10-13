@@ -27,4 +27,4 @@ queryDomains domains =
               jsonResponse
               mempty
        liftIO $ print (responseBody r :: Value)
-       pure [DomainMethods "example" ["doSome"]]
+       pure [DomainMethods "example" undefined]

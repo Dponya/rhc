@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Main where
@@ -26,9 +27,13 @@ doErr (x:x2:xs) = if x > x2
   then throwM (ErrorObject (ErrorServCause (ServerError (-32000))) "test message")
   else pure [x + x2]
 
+makeCoffee :: RemoteAction String [String]
+makeCoffee x = pure ["some", "pre-defined", "words"]
+
 injectMethods [
   ("example.doSome", 'doSome),
-  ("example.doErr", 'doErr)
+  ("example.doErr", 'doErr),
+  ("coffee.makeCoffee", 'makeCoffee)
   ]
 
 main :: IO ()
