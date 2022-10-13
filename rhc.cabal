@@ -28,6 +28,7 @@ library
       Network.RHC.Client
       Network.RHC.Internal.Client
       Network.RHC.Internal.Inspector
+      Network.RHC.Internal.Orphans
       Network.RHC.Internal.RPCCommon
       Network.RHC.Internal.RPCErrors
       Network.RHC.Internal.Server
