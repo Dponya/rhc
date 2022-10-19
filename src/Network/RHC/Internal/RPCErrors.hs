@@ -5,6 +5,8 @@
 module Network.RHC.Internal.RPCErrors where
 import Data.Aeson
 import Control.Exception (Exception)
+import Data.Aeson.KeyMap
+import Data.List (find)
 
 type ReqId = Integer
 
@@ -74,6 +76,24 @@ instance ToJSON ErrorCause where
   toJSON (ErrorExecutionCause a) = toJSON a
   toJSON (ErrorServCause a) = toJSON a
 
+instance FromJSON ErrorCause where
+  parseJSON a = case fromJSON @Int a of
+    Error s -> mempty
+    Success n -> pure result
+      where
+        result = case elem of
+          Nothing -> ErrorServCause (ServerError n)
+          Just (_, x) -> x
+        elem = find (\(idx, _) -> idx == n) codes
+        codes :: [(Int, ErrorCause)]
+        codes = [
+          (-32700, ErrorParseCause ParseError),
+          (-32600, ErrorParseCause InvalidRequest),
+          (-32601, ErrorExecutionCause MethodNotFound), 
+          (-32602, ErrorExecutionCause InvalidParams),
+          (-32603, ErrorServCause InternalError)
+          ]
+
 instance ToJSON ErrorObject where
   toJSON (ErrorObject code msg) =
     object
@@ -87,3 +107,15 @@ instance ToJSON ErrorObject where
           "message" .= msg,
           "data" .= additional
         ]
+
+instance FromJSON ErrorObject where
+  parseJSON (Object v) =
+    case member "data" v of
+      True -> ErrorObjectAdditional
+                <$> v .: "code"
+                <*> v .: "message"
+                <*> v .: "data"
+      False -> ErrorObject
+                <$> v .: "code"
+                <*> v .: "message"
+  parseJSON _ = mempty

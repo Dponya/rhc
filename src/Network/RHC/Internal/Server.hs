@@ -72,6 +72,25 @@ data Res
       {
         void :: ()
       }
+  deriving Show
+
+instance FromJSON Res where
+  parseJSON (Object v) = case KM.member "error" v of
+    False -> case KM.member "id" v of
+      False -> pure . ResVoid $ ()
+      True -> ResSuccess
+                  <$> v .: "jsonrpc"
+                  <*> v .: "result"
+                  <*> v .: "id"
+    True -> case KM.member "id" v of
+      False -> ResErrsWithoutId
+                  <$> v .: "jsonrpc"
+                  <*> v .: "error"
+      True -> ResErrsWithId
+                  <$> v .: "jsonrpc"
+                  <*> v .: "error"
+                  <*> v .: "id"
+  parseJSON _ = mempty
 
 instance FromJSON Req where
   parseJSON (Object v) =
