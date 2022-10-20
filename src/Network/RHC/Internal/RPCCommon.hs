@@ -41,21 +41,17 @@ type RemoteTable = [(
     RemoteAction ByteString ActionResponse
   )]
 
-data MethodInfo =
-  MethodInfo
+data MethodInfo = MethodInfo
   { methodName :: Text
   , methodType :: Value
   } deriving stock (Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
 
 data DomainMethods = DomainMethods
-  { domain :: Text,
-    methods :: [MethodInfo]
-  } deriving (Generic, Show)
+  { domain :: Text
+  , methods :: [MethodInfo]
+  } deriving stock (Show, Generic)
+    deriving anyclass (ToJSON, FromJSON)
 
 instance Eq DomainMethods where
   (DomainMethods d _) == (DomainMethods d1 _) = d == d1
-
-instance ToJSON DomainMethods
-
-instance FromJSON DomainMethods

@@ -1,16 +1,19 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Main where
 
-import Network.HTTP.Req
-import Network.RHC.Internal.Client (queryDomains)
+import qualified Network.HTTP.Req as R
+import Network.RHC.Internal.Client (queryDomains, load, CliConf (..), CliProtocol(..))
 
 main :: IO ()
-main = queryDomains ["example"] >> print ()
+main = print ()
+
+$(load (CliConf 3000 "localhost" Http) ["example", "coffee"])
 
 {-
 
 load ["example", "offers", "past"]
 
-remoteRunner = runRemote 1500 "localhosts"
+remoteRunner = runCall (1500 "localhosts" Websocket)
 
 sendEmailTemplates :: [Integer] -> RemoteCall [Integer]
 sendEmailTemplate nums =
