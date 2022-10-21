@@ -1,25 +1,31 @@
 {-# LANGUAGE TemplateHaskell #-}
+
 module Main where
 
+import Control.Monad.Reader (ReaderT (..))
+
+import Network.RHC.Internal.Client (
+    CliConf (..),
+    CliProtocol (..),
+    RemoteCall (..),
+    load,
+    runCall
+  )
 import qualified Network.HTTP.Req as R
-import Network.RHC.Internal.Client (queryDomains, load, CliConf (..), CliProtocol(..))
+
+
+load (CliConf 3000 "localhost" Http)
+     ["example", "coffee"]
+
+config :: CliConf
+config = CliConf
+    { cPort = 3000
+    , cHost = "localhost"
+    , cProtocol = Http
+    }
+
+remoteRunner :: RemoteCall a -> IO a
+remoteRunner x = runReaderT (runCall x) config
 
 main :: IO ()
-main = print ()
-
-$(load (CliConf 3000 "localhost" Http) ["example", "coffee"])
-
-{-
-
-load ["example", "offers", "past"]
-
-remoteRunner = runCall (1500 "localhosts" Websocket)
-
-sendEmailTemplates :: [Integer] -> RemoteCall [Integer]
-sendEmailTemplate nums =
-    do result <- doSome example $ nums
-       return $ map (+1) result
-
-main = remoteRunner $ sendEmailTemplates [1,2,3]
-
--}
+main = remoteRunner (makeCoffee "hello from client!") >>= print

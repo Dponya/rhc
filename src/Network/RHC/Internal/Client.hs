@@ -97,7 +97,7 @@ requester mtd reqId prm =
         jsonResponse
         (port p)
 
-parseResponse :: Res -> Either ErrorObject [DomainMethods]
+parseResponse :: FromJSON a => Res -> Either ErrorObject a
 parseResponse = \case
   ResSuccess s va n -> case fromJSON va of
     Error str -> undefined -- delete in future
@@ -129,7 +129,13 @@ declareServMethods dm nm tyValue = do
   where
     fnName = mkName nm
     fnBody = [|
-      undefined
+      \x -> do conf@(CliConf p h pr) <- ask
+               liftIO $ runReq defaultHttpConfig
+                        $ do 
+                           j <- requester (dm ++ "." ++ nm) 42 x conf
+                           case parseResponse (responseBody j) of
+                             Left eo -> throwM eo
+                             Right r -> pure r
       |]
     typeSig = SigD fnName tyD
     tyD :: Type
