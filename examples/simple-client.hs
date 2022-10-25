@@ -11,7 +11,6 @@ import Network.RHC.Internal.Client (
     load,
     runCall
   )
-import qualified Network.HTTP.Req as R
 
 
 load (CliConf 3000 "localhost" Http)
