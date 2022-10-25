@@ -36,16 +36,16 @@ executeDecoded fun args =
     Left s -> throwM InvalidParams
     Right prm -> fun prm >>= pure . toJSON
 
-sendDomains :: [(T.Text, Value)] -> RemoteAction [String] [DomainMethods]
+sendDomains :: [(T.Text, Value)] -> RemoteAction [String] [DomainMethods Value]
 sendDomains table names = pure $ domains `includes` names
   where
-    includes :: [DomainMethods] -> [String] -> [DomainMethods]
+    includes :: [DomainMethods Value] -> [String] -> [DomainMethods Value]
     includes ds (n:ns) = filter (isSame n) ds <> includes ds ns
     includes ds [] = []
-    isSame n (DomainMethods dn _) = dn == T.pack n 
+    isSame n (DomainMethods dn _) = dn == T.pack n
     domains = buildDomains table
 
-buildDomains :: [(T.Text, Value)] -> [DomainMethods]
+buildDomains :: [(T.Text, Value)] -> [DomainMethods Value]
 buildDomains table = fmap construct $ group . toSorted . fmap pack $ table
   where
     construct (DomainMethods n x : xs) =
@@ -58,7 +58,7 @@ buildDomains table = fmap construct $ group . toSorted . fmap pack $ table
       (DomainMethods x _)
       (DomainMethods x1 _) = compare x x1
 
-    pack :: (T.Text, Value) -> DomainMethods
+    pack :: (T.Text, Value) -> DomainMethods Value
     pack (x1, x2) = DomainMethods (fst (divide x1)) [MethodInfo (snd (divide x1)) x2]
 
 divide :: T.Text -> (RemoteActionDomain, RemoteActionName)
