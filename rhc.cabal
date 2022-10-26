@@ -25,16 +25,16 @@ source-repository head
 
 library
   exposed-modules:
-      Network.RHC.Client
-      Network.RHC.Internal.Client
-      Network.RHC.Internal.Inspector
-      Network.RHC.Internal.Orphans
-      Network.RHC.Internal.RPCCommon
-      Network.RHC.Internal.RPCErrors
-      Network.RHC.Internal.Server
-      Network.RHC.Internal.Utils
-      Network.RHC.Server
+      Rhc
   other-modules:
+      Rhc.Client
+      Rhc.Internal
+      Rhc.Server
+      Rhc.Server.Domain
+      Rhc.Server.Error
+      Rhc.Server.Remote
+      Rhc.Server.Request
+      Rhc.Server.Response
       Paths_rhc
   hs-source-dirs:
       src

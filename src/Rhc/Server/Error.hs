@@ -2,11 +2,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Network.RHC.Internal.RPCErrors where
-import Data.Aeson
+module Rhc.Server.Error
+  ( ErrorParseCause(..)
+  , ErrorExecutionCause(..)
+  , ErrorServCause(..)
+  , ErrorObject(..)
+  , ErrorCause(..)
+  , errObject
+  ) where
+
 import Control.Exception (Exception)
-import Data.Aeson.KeyMap
+import Data.Aeson
+    ( FromJSON(parseJSON)
+    , ToJSON(toJSON)
+    , Value(Object)
+    , (.:)
+    , fromJSON
+    , object
+    , Result(Success, Error)
+    , KeyValue((.=)) 
+    )
+import Data.Aeson.KeyMap (member)
 import Data.List (find)
+
 
 type ReqId = Integer
 

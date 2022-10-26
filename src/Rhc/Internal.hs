@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Network.RHC.Internal.Orphans where
+module Rhc.Internal where
 
 import Data.Aeson (ToJSON, FromJSON)
 import Language.Haskell.TH

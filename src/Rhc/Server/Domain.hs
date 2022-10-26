@@ -1,40 +1,36 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
 
-module Network.RHC.Internal.Utils where
+module Rhc.Server.Domain
+  ( MethodInfo(..)
+  , DomainMethods(..)
+  , sendDomains
+  ) where
 
-import Data.Aeson (eitherDecode, FromJSON, Value, ToJSON(toJSON))
+import Data.Aeson (ToJSON, FromJSON, Value)
 import Data.List (group, sortBy)
-import Control.Monad.Catch ( MonadThrow(throwM) )
-import Control.Monad.State (MonadState (get))
-import Control.Monad.IO.Class (MonadIO(..))
-import Language.Haskell.TH (Name)
-import Language.Haskell.TH.Syntax (Type)
+import GHC.Generics (Generic)
 
-import Network.RHC.Internal.Inspector
-import Network.RHC.Internal.RPCCommon
-    ( DomainMethods(DomainMethods),
-      RemoteActionDomain,
-      RemoteActionName,
-      RemoteAction,
-      ActionResponse, MethodInfo (MethodInfo) )
-import Network.RHC.Internal.RPCErrors
-    ( ErrorExecutionCause(InvalidParams) )
+import Rhc.Server.Remote (RemoteAction, RemoteActionName, RemoteActionDomain)
 
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BSL
-import qualified Data.Foldable as DF
 
+data MethodInfo ty = MethodInfo
+  { methodName :: T.Text
+  , methodType :: ty
+  } deriving stock (Show, Generic)
+    deriving anyclass (ToJSON, FromJSON)
 
-executeDecoded ::
-  forall a b.
-  (FromJSON a, ToJSON b) =>
-  RemoteAction a b ->
-  RemoteAction BSL.ByteString ActionResponse
-executeDecoded fun args =
-  case eitherDecode args of
-    Left s -> throwM InvalidParams
-    Right prm -> fun prm >>= pure . toJSON
+data DomainMethods ty = DomainMethods
+  { domain :: T.Text
+  , methods :: [MethodInfo ty]
+  } deriving stock (Show, Generic)
+    deriving anyclass (ToJSON, FromJSON)
+
+instance Eq (DomainMethods a) where
+  (DomainMethods d _) == (DomainMethods d1 _) = d == d1
 
 sendDomains :: [(T.Text, Value)] -> RemoteAction [String] [DomainMethods Value]
 sendDomains table names = pure $ domains `includes` names

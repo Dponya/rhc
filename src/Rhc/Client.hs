@@ -3,28 +3,55 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 
-module Network.RHC.Internal.Client where
+module Rhc.Client
+  ( CliConf (..)
+  , CliProtocol (..)
+  , RemoteCall (..)
+  , load
+  ) where
 
-import Control.Monad.Catch (MonadCatch, MonadThrow (..))
-import Control.Monad.IO.Class
-import Control.Monad.Reader (ReaderT)
+
+import Control.Exception (Exception)
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
+import Control.Monad.Reader (ReaderT, ask)
 import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Aeson (FromJSON, ToJSON, Value, fromJSON, object, (.=))
 import Data.Aeson.Types (Result (..))
-import qualified Data.Text as T
 import Language.Haskell.TH (ExpQ, clause, funD, normalB, varP)
 import Language.Haskell.TH.Syntax
-import Network.HTTP.Req hiding (Http, Https)
+    (mkName, Q, Type(ConT, ForallT, ArrowT, AppT), Dec(SigD), runIO)
+import Network.HTTP.Req
+    ( JsonResponse
+    , defaultHttpConfig
+    , http
+    , https
+    , jsonResponse
+    , port
+    , req
+    , responseBody
+    , runReq
+    , POST(POST)
+    , ReqBodyJson(ReqBodyJson)
+    )
+
+import Rhc.Server.Domain (DomainMethods(..), MethodInfo(..))
+import Rhc.Server.Error (ErrorObject)
+import Rhc.Server.Response
+    ( Res 
+      ( ResSuccess
+      , ResErrsWithoutId
+      , ResErrsWithId
+      , ResSystemErrs
+      )
+    )
+
+import qualified Data.Text as T
 import qualified Network.HTTP.Req as R
-import Network.RHC.Internal.Orphans
-import Network.RHC.Internal.RPCCommon (DomainMethods (..), MethodInfo (..))
-import Network.RHC.Internal.RPCErrors (ErrorObject)
-import Network.RHC.Internal.Server
-import Control.Monad.Reader (ask)
-import Control.Exception (Exception)
+
 
 data CliProtocol = Https | Http | Websocket
 
@@ -34,15 +61,15 @@ data CliConf = CliConf
     cProtocol :: CliProtocol
   }
 
-newtype RemoteCall a = RemoteCall {runCall :: ReaderT CliConf IO a}
+newtype RemoteCall a = RemoteCall { runCall :: ReaderT CliConf IO a }
   deriving newtype
-    ( Monad,
-      Applicative,
-      Functor,
-      MonadReader CliConf,
-      MonadIO,
-      MonadThrow,
-      MonadCatch
+    ( Monad
+    , Applicative
+    , Functor
+    , MonadReader CliConf
+    , MonadIO
+    , MonadThrow
+    , MonadCatch
     )
 
 data ClientErrs = CliSysErr String
