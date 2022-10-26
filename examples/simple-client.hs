@@ -4,13 +4,7 @@ module Main where
 
 import Control.Monad.Reader (ReaderT (..))
 
-import Network.RHC.Internal.Client (
-    CliConf (..),
-    CliProtocol (..),
-    RemoteCall (..),
-    load,
-    runCall
-  )
+import Rhc
 
 
 load (CliConf 3000 "localhost" Http)
