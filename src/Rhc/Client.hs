@@ -21,7 +21,7 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Aeson (FromJSON, ToJSON, Value, fromJSON, object, (.=))
 import Data.Aeson.Types (Result (..))
-import Language.Haskell.TH (ExpQ, clause, funD, normalB, varP)
+import Language.Haskell.TH (clause, funD, normalB)
 import Language.Haskell.TH.Syntax
     (mkName, Q, Type(ConT, ForallT, ArrowT, AppT), Dec(SigD), runIO)
 import Network.HTTP.Req
@@ -83,13 +83,6 @@ queryDomains :: CliConf -> [String] -> IO [DomainMethods Type]
 queryDomains conf domains =
   runReq defaultHttpConfig $
     do
-      let payload =
-            object
-              [ "jsonrpc" .= ("2.0" :: String),
-                "method" .= ("sendDomains" :: String),
-                "params" .= domains,
-                "id" .= (-100 :: Integer)
-              ]
       r <- requester "sendDomains" (-100) domains conf 
       case parseRemoteResult (responseBody r :: Res) of
         Left eo -> throwM eo
@@ -108,7 +101,7 @@ requester mtd reqId prm =
   \case
     (CliConf p h Http) -> templateHttp p (T.pack h)
     (CliConf p h Https) -> templateHttps p (T.pack h)
-    (CliConf p h Websocket) -> undefined -- not implemented yet
+    (CliConf _ _ Websocket) -> undefined -- not implemented yet
   where
     body =
       object
@@ -134,21 +127,11 @@ requester mtd reqId prm =
 
 parseRemoteResult :: Res -> Either ErrorObject Value
 parseRemoteResult = \case
-  ResSuccess s va n -> Right va
-  ResErrsWithoutId s eo -> Left eo
-  ResErrsWithId s eo n -> Left eo
-  ResSystemErrs s eo -> Left eo
+  ResSuccess _ va _ -> Right va
+  ResErrsWithoutId _ eo -> Left eo
+  ResErrsWithId _ eo _ -> Left eo
+  ResSystemErrs _ eo -> Left eo
   _ -> undefined
-
-parseResponse :: FromJSON a => Res -> Either ErrorObject a
-parseResponse = \case
-  ResSuccess s va n -> case fromJSON va of
-    Error str -> undefined -- just throw system error
-    Success any -> Right any
-  ResErrsWithoutId s eo -> Left eo
-  ResErrsWithId s eo n -> Left eo
-  ResSystemErrs s eo -> Left eo
-  _ -> Left undefined
 
 rebuildSig :: Type -> Either String Type
 rebuildSig = rebuild
@@ -172,7 +155,7 @@ declareServMethods dm nm ty = do
   where
     fnName = mkName nm
     fnBody = [|
-      \x -> do conf@(CliConf p h pr) <- ask
+      \x -> do conf <- ask
                liftIO $
                 runReq defaultHttpConfig
                   $ do
@@ -185,5 +168,5 @@ declareServMethods dm nm ty = do
       |]
     typeSig = SigD fnName tyD
     tyD = case rebuildSig ty of
-      Left s -> undefined
+      Left _ -> undefined
       Right ty' -> ty'

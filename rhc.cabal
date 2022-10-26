@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 3.0
 
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
@@ -23,7 +23,55 @@ source-repository head
   type: git
   location: https://github.com/dponya/rhc
 
+common common-options
+  build-depends:       base >= 4.7 && < 5
+
+  ghc-options:         -Wall
+                       -Wcompat
+                       -Widentities
+                       -Wincomplete-uni-patterns
+                       -Wincomplete-record-updates
+                       -Wredundant-constraints
+                       -Wnoncanonical-monad-instances
+  if impl(ghc >= 8.2)
+    ghc-options:       -fhide-source-paths
+  if impl(ghc >= 8.4)
+    ghc-options:       -Wmissing-export-lists
+                       -Wpartial-fields
+  if impl(ghc >= 8.8)
+    ghc-options:       -Wmissing-deriving-strategies
+                       -fwrite-ide-info
+                       -hiedir=.hie
+  if impl(ghc >= 8.10)
+    ghc-options:       -Wunused-packages
+  if impl(ghc >= 9.0)
+    ghc-options:       -Winvalid-haddock
+  if impl(ghc >= 9.2)
+    ghc-options:       -Wredundant-bang-patterns
+                       -Woperator-whitespace
+  if impl(ghc >= 9.4)
+    ghc-options:       -Wredundant-strictness-flags
+
+  default-language:   Haskell2010
+  default-extensions: ConstraintKinds
+                      DeriveAnyClass
+                      DeriveGeneric
+                      DerivingStrategies
+                      GeneralizedNewtypeDeriving
+                      InstanceSigs
+                      KindSignatures
+                      LambdaCase
+                      OverloadedStrings
+                      RecordWildCards
+                      ScopedTypeVariables
+                      StandaloneDeriving
+                      StrictData
+                      TupleSections
+                      TypeApplications
+                      ViewPatterns
+
 library
+  import: common-options
   exposed-modules:
       Rhc
   other-modules:
@@ -40,7 +88,6 @@ library
       src
   build-depends:
       aeson >=2.0.3.0 && <2.0.4.0
-    , base >=4.7 && <5
     , bytestring
     , exceptions >=0.10.4 && <0.11
     , http-types >=0.12.3 && <0.13

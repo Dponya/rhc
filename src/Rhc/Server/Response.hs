@@ -7,19 +7,13 @@ module Rhc.Server.Response
   ) where
 
 import Data.Aeson
-  ( Object
-  , FromJSON(..)
+  ( FromJSON(..)
   , ToJSON(..)
-  , eitherDecode
-  , Result(..)
-  , decode
-  , encode
-  , fromJSON
   , (.:)
   , (.=)
   , object
   )
-import Data.Aeson.Types (Value(..), parseEither)
+import Data.Aeson.Types (Value(..))
 import Rhc.Server.Request (Req(..))
 import Rhc.Server.Remote (ActionResponse)
 import Rhc.Server.Error (ErrorObject)
@@ -49,7 +43,7 @@ data Res
   | ResVoid
       { void :: ()
       }
-  deriving Show
+  deriving stock Show
 
 instance FromJSON Res where
   parseJSON (Object v) = case KM.member "error" v of
@@ -99,7 +93,7 @@ instance ToJSON Res where
   toJSON (ResVoid ()) = Null
 
 buildResponse :: Req -> ActionResponse -> Res
-buildResponse Notif {} res = ResVoid ()
+buildResponse Notif {} _ = ResVoid ()
 buildResponse (Req _ _ _ rId) result = ResSuccess "2.0" result rId
 
 buildFromUser :: ErrorObject -> Res

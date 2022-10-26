@@ -37,7 +37,7 @@ sendDomains table names = pure $ domains `includes` names
   where
     includes :: [DomainMethods Value] -> [String] -> [DomainMethods Value]
     includes ds (n:ns) = filter (isSame n) ds <> includes ds ns
-    includes ds [] = []
+    includes _ [] = []
     isSame n (DomainMethods dn _) = dn == T.pack n
     domains = buildDomains table
 

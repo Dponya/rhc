@@ -20,12 +20,10 @@ import Data.Text (Text)
 import Data.Aeson (Value, toJSON)
 import Data.ByteString.Lazy (ByteString)
 import Language.Haskell.TH
-    (listE, Q, ExpQ, Type, Dec, Name, reify, runIO, Info(VarI), dyn)
-import Language.Haskell.TH.Syntax
-    (Q, Type, Dec, Name, reify, runIO, Info(VarI))
-import Network.Wai.Handler.Warp (InvalidRequest, Port, run)
+    (listE, Q, ExpQ, Dec, Name, reify, Info(VarI), dyn)
+import Network.Wai.Handler.Warp (Port)
 
-import Rhc.Internal
+import Rhc.Internal ()
 
 newtype RemoteEnv = RemoteEnv {
     table :: RemoteTable
@@ -71,7 +69,7 @@ generateTable names = listE $ fmap attachAction names
     attachAction (s, n) = [|(s, $(dyn "executeDecoded") $ $(dyn . show $ n))|]
 
 packSenderDomains :: [(Text, Name)] -> ExpQ -> ExpQ
-packSenderDomains ns xs = [| $(tuple) |]
+packSenderDomains ns _ = [| $(tuple) |]
   where
     tuple = [| ("sendDomains", $(dyn "executeDecoded") $ $(dynamicApplied))|]
     arg :: ExpQ

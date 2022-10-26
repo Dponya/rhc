@@ -26,19 +26,17 @@ import Data.Aeson.KeyMap (member)
 import Data.List (find)
 
 
-type ReqId = Integer
-
 data ErrorParseCause
   = ParseError
-  | InvalidRequest deriving Exception
+  | InvalidRequest deriving anyclass Exception
 
 data ErrorExecutionCause
   = MethodNotFound
-  | InvalidParams deriving Exception
+  | InvalidParams deriving anyclass Exception
 
 data ErrorServCause
   = InternalError
-  | ServerError Int deriving Exception
+  | ServerError Int deriving anyclass Exception
 
 data ErrorCause
   = ErrorParseCause ErrorParseCause
@@ -54,7 +52,8 @@ data ErrorObject
       { code :: ErrorCause,
         message :: String,
         additional :: Value
-      } deriving (Show, Exception)
+      } deriving stock Show
+        deriving anyclass Exception
 
 errObject :: ErrorCause -> ErrorObject
 errObject cause = ErrorObject cause (show cause)
@@ -96,13 +95,13 @@ instance ToJSON ErrorCause where
 
 instance FromJSON ErrorCause where
   parseJSON a = case fromJSON @Int a of
-    Error s -> mempty
+    Error _ -> mempty
     Success n -> pure result
       where
-        result = case elem of
+        result = case found of
           Nothing -> ErrorServCause (ServerError n)
           Just (_, x) -> x
-        elem = find (\(idx, _) -> idx == n) codes
+        found = find (\(idx, _) -> idx == n) codes
         codes :: [(Int, ErrorCause)]
         codes = [
           (-32700, ErrorParseCause ParseError),

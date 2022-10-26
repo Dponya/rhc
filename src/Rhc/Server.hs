@@ -12,21 +12,18 @@ module Rhc.Server
   , module Rhc.Server.Error
   ) where
 
-import Control.Monad.Reader (MonadReader(..), runReaderT)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.Catch (catches, Handler(Handler), MonadThrow(throwM))
 import Control.Exception (IOException)
 import Data.Aeson
     (eitherDecode, encode, FromJSON, Value, ToJSON(toJSON))
-import Data.Aeson.Types (FromJSON, Value, ToJSON(toJSON))
-import Data.ByteString.Builder (byteString, toLazyByteString, Builder)
+import Data.ByteString.Builder (byteString, toLazyByteString)
 import Data.ByteString.Lazy (ByteString, toStrict)
-import GHC.IO.Exception (IOErrorType(SystemError))
 import Network.HTTP.Types (status200)
 import Network.HTTP.Types.Header (hContentType)
-import Network.Wai.Handler.Warp (InvalidRequest, Port, run)
+import Network.Wai.Handler.Warp (Port, run)
 import Network.Wai
   ( Application,
-    Request,
     getRequestBodyChunk,
     responseBuilder,
   )
@@ -57,7 +54,7 @@ executeDecoded ::
   RemoteAction ByteString ActionResponse
 executeDecoded fun args =
   case eitherDecode args of
-    Left s -> throwM InvalidParams
+    Left _ -> throwM InvalidParams
     Right prm -> fun prm >>= pure . toJSON
 
 catchParseErrs :: ErrorParseCause -> IO Value
@@ -72,8 +69,8 @@ executionErrHandler :: ErrorExecutionCause -> Req -> RPC Value
 executionErrHandler e req = pure $ toJSON $ buildWithId (ErrorExecutionCause e) req
   where
     buildWithId :: ErrorCause -> Req -> Res
-    buildWithId e Notif {} = ResVoid ()
-    buildWithId e (Req _ _ _ rId) = ResErrsWithId "2.0" (errObject e) rId
+    buildWithId _ Notif {} = ResVoid ()
+    buildWithId c (Req _ _ _ rId) = ResErrsWithId "2.0" (errObject c) rId
 
 systemErrHandler :: IOException -> IO Value
 systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalError)
@@ -124,6 +121,6 @@ runWarp port table = run port app
                   getRequestBodyChunk req
       toBuilder = byteString . toStrict . encode @Value
       in
-        do req <- parsedIORequest
-           res <- mainThread req table
+        do r <- parsedIORequest
+           res <- mainThread r table
            responseSender . toBuilder $ res

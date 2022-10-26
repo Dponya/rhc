@@ -10,11 +10,9 @@ module Rhc.Server.Request
 import Control.Monad.Catch (MonadThrow(throwM))
 import Control.Monad.Reader (MonadReader(ask))
 import Data.Aeson
-  ( Object
-  , FromJSON(..)
+  ( FromJSON(..)
   , eitherDecode
   , Result(..)
-  , decode
   , encode
   , fromJSON
   , (.:)
@@ -48,7 +46,7 @@ data Req
         method :: RemoteActionName,
         params :: Value,
         reqId :: Integer
-      } deriving Show
+      } deriving stock Show
 
 instance FromJSON Req where
   parseJSON (Object v) =
@@ -80,23 +78,23 @@ jsonToReq (Object o) =
      String mtd <- KM.lookup "method" o
      params <- KM.lookup "params" o
      case KM.member "id" o of
-       False -> pure (Notif (T.unpack ver) (mtd) params)
+       False -> pure (Notif (T.unpack ver) mtd params)
        True -> do
         valId <- KM.lookup "id" o
         case fromJSON valId of
-          Error s -> Nothing
-          Success reqId -> pure (Req (T.unpack ver) (mtd) params reqId)
+          Error _ -> Nothing
+          Success reqId -> pure (Req (T.unpack ver) mtd params reqId)
 jsonToReq _ = Nothing
 
 traverseBatchReq :: Value -> [Maybe Req]
-traverseBatchReq val@(Array ar) = fmap jsonToReq (V.toList ar)
+traverseBatchReq (Array ar) = fmap jsonToReq (V.toList ar)
 traverseBatchReq _ = [Nothing]
 
 parseRequest :: ByteString -> RPC (Either [Maybe Req] Req)
 parseRequest body = case eitherDecode @Value body of
-  Left s -> throwM ParseError
-  Right val@(Array v) -> pure $ Left $ traverseBatchReq val
-  Right val@(Object v) -> case parseEither parseJSON val of
-      Left s -> throwM InvalidRequest
+  Left _ -> throwM ParseError
+  Right val@(Array _) -> pure $ Left $ traverseBatchReq val
+  Right val@(Object _) -> case parseEither parseJSON val of
+      Left _ -> throwM InvalidRequest
       Right obj -> pure $ Right obj
   Right _ -> throwM ParseError
