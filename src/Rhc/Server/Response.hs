@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Rhc.Server.Response
   ( Res(..)
   , buildResponse

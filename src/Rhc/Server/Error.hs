@@ -1,7 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveAnyClass #-}
-
 module Rhc.Server.Error
   ( ErrorParseCause(..)
   , ErrorExecutionCause(..)

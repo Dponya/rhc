@@ -1,9 +1,4 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
 module Rhc.Client

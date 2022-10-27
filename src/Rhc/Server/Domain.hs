@@ -1,8 +1,3 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Rhc.Server.Domain
   ( MethodInfo(..)
   , DomainMethods(..)
