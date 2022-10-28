@@ -50,14 +50,16 @@ type RemoteTable = [(
 injectMethods :: [(Text, Name)] -> Q [Dec]
 injectMethods names =
   [d|
-    serv :: Port -> IO ()
-    serv port = runWarp port
-      (
+    remoteTable :: RemoteTable
+    remoteTable =       (
         (
           $(packSenderDomains names (generateTable names))
         ) :
           $(generateTable names)
       )
+
+    serv :: Port -> IO ()
+    serv port = runWarp port remoteTable
   |]
 
 generateTable :: [(Text, Name)] -> ExpQ

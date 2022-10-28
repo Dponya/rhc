@@ -4,7 +4,12 @@ module Rhc.Server
   , runWarp
   , RemoteAction
   , sendDomains
+  , mainThread
+  , singlePerform
+  , batchPerform
   , module Rhc.Server.Error
+  , module Rhc.Server.Request
+  , module Rhc.Server.Response
   ) where
 
 import Control.Monad.Reader (runReaderT)
@@ -73,13 +78,6 @@ systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalErro
     buildWithoutId :: ErrorCause -> Res
     buildWithoutId e = ResErrsWithoutId "2.0" (errObject e)
 
-processRPC :: ByteString -> RPC Value
-processRPC bs = do
-  parsed <- parseRequest bs
-  case parsed of
-    Left reqs -> toJSON <$> batchPerform reqs
-    Right req -> toJSON <$> singlePerform req
-
 batchPerform :: [Maybe Req] -> RPC [Value]
 batchPerform = traverse execute
   where
@@ -95,6 +93,13 @@ singlePerform :: Req -> RPC Value
 singlePerform req
   = (toJSON . buildResponse req <$> handleRequest req)
     `catches` [Handler $ flip executionErrHandler req]
+
+processRPC :: ByteString -> RPC Value
+processRPC bs = do
+  parsed <- parseRequest bs
+  case parsed of
+    Left reqs -> toJSON <$> batchPerform reqs
+    Right req -> toJSON <$> singlePerform req
 
 mainThread :: ByteString -> RemoteTable -> IO Value
 mainThread body table = executeRPC body env

@@ -17,6 +17,7 @@ import Data.Aeson
   , fromJSON
   , (.:)
   )
+import Data.Aeson (ToJSON(toJSON), object, (.=))
 import Data.Aeson.Types (Value(..), parseEither)
 import Data.ByteString.Lazy (ByteString)
 import Rhc.Server.Remote
@@ -63,6 +64,21 @@ instance FromJSON Req where
           <*> v .: "method"
           <*> v .: "params"
   parseJSON _ = mempty
+
+instance ToJSON Req where
+  toJSON (Req {..}) =
+    object
+      [ "jsonrpc" .= reqVersion
+      , "method"  .= method
+      , "params"  .= params
+      , "id"      .= reqId
+      ] 
+  toJSON (Notif {..}) =
+    object
+      [ "jsonrpc" .= reqVersion
+      , "method"  .= method
+      , "params"  .= params
+      ] 
 
 handleRequest :: Req -> RPC ActionResponse
 handleRequest req =
