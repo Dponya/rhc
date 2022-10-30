@@ -62,8 +62,12 @@ catchParseErrs e = pure $ toJSON build
   where
     build = ResErrsWithoutId "2.0" (errObject (ErrorParseCause e))
 
-userDefinedHandler :: ErrorObject -> RPC Value
-userDefinedHandler obj = pure $ toJSON $ buildFromUser obj
+userDefinedHandler :: ErrorObject -> Req -> RPC Value
+userDefinedHandler obj req = pure $ toJSON $ build obj req
+  where
+    build :: ErrorObject -> Req -> Res
+    build _ Notif {} = ResVoid ()
+    build errObj (Req _ _ _ rId) = ResErrsWithId "2.0" errObj rId
 
 executionErrHandler :: ErrorExecutionCause -> Req -> RPC Value
 executionErrHandler e req = pure $ toJSON $ buildWithId (ErrorExecutionCause e) req
@@ -83,7 +87,7 @@ batchPerform = traverse execute
   where
     execute (Just req) = (toJSON . buildResponse req <$> handleRequest req)
       `catches` [
-        Handler userDefinedHandler,
+        Handler $ flip userDefinedHandler req,
         Handler $ flip executionErrHandler req
       ]
     execute Nothing = pure . toJSON $ build
@@ -92,7 +96,10 @@ batchPerform = traverse execute
 singlePerform :: Req -> RPC Value
 singlePerform req
   = (toJSON . buildResponse req <$> handleRequest req)
-    `catches` [Handler $ flip executionErrHandler req]
+    `catches`
+      [ Handler $ flip executionErrHandler req
+      , Handler $ flip userDefinedHandler req
+      ]
 
 processRPC :: ByteString -> RPC Value
 processRPC bs = do
