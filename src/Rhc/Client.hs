@@ -72,7 +72,8 @@ data ClientErrs = CliSysErr String
   deriving anyclass Exception
 
 load :: CliConf -> [String] -> Q [Dec]
-load conf ds = runIO (queryDomains conf ds) >>= traverseDms
+load conf ds = runIO (queryDomains conf ds) >>=
+  \xs -> runIO (mapM rebuildDms' xs) >>= traverseDms
 
 queryDomains :: CliConf -> [String] -> IO [DomainMethods Type]
 queryDomains conf domains =
@@ -137,11 +138,27 @@ rebuildSig = rebuild
 
     monadTy = ConT ''RemoteCall
 
-traverseDms :: [DomainMethods Type] -> Q [Dec]
-traverseDms ds = fmap (mconcat . mconcat) f
+rebuildDms' :: DomainMethods Type -> IO (DomainMethods Type)
+rebuildDms' (DomainMethods dm ms) = DomainMethods dm <$> mapM unpackMs ms
   where
-    unpack dm x = declareServMethods (T.unpack dm) (T.unpack $ methodName x) (methodType x)
-    f = mapM (\x -> mapM (unpack (domain x)) . methods $ x) ds
+    unpackMs (MethodInfo n ty) = MethodInfo n <$> (case rebuildSig ty of
+      Left s -> throwM $ CliSysErr s
+      Right ty' -> pure ty')
+
+traverseDms :: [DomainMethods Type] -> Q [Dec]
+traverseDms ds = fmap (mconcat . mconcat) (declarations ds)
+  where
+    declarations :: [DomainMethods Type] -> Q [[[Dec]]]
+    declarations = mapM fnFmap
+
+    fnFmap :: DomainMethods Type -> Q [[Dec]]
+    fnFmap x = mapM (declare (domain x)) . methods $ x
+
+    declare :: T.Text -> MethodInfo Type -> Q [Dec]
+    declare dm mtd = declareServMethods 
+      (T.unpack dm)
+      (T.unpack $ methodName mtd)
+      (methodType mtd)
 
 declareServMethods :: String -> String -> Type -> Q [Dec]
 declareServMethods dm nm ty = do
@@ -161,7 +178,4 @@ declareServMethods dm nm ty = do
                         Error s -> throwM (CliSysErr s)
                         Success result -> pure result
       |]
-    typeSig = SigD fnName tyD
-    tyD = case rebuildSig ty of
-      Left _ -> undefined
-      Right ty' -> ty'
+    typeSig = SigD fnName ty

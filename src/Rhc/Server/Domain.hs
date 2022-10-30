@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 module Rhc.Server.Domain
   ( MethodInfo(..)
   , DomainMethods(..)
@@ -15,7 +17,7 @@ import qualified Data.Text as T
 data MethodInfo ty = MethodInfo
   { methodName :: T.Text
   , methodType :: ty
-  } deriving stock (Show, Generic)
+  } deriving stock (Show, Generic, Functor)
     deriving anyclass (ToJSON, FromJSON)
 
 data DomainMethods ty = DomainMethods
