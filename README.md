@@ -95,3 +95,56 @@ main :: IO ()
 main = serv 3000
 
 ```
+
+## Development
+
+To build the project and run the tests locally, you can use either
+`cabal` or `stack`.
+
+### Cabal
+
+Build the project:
+
+```shell
+cabal build rhc
+```
+
+To build examples, run first server command:
+
+```shell
+cabal build simple-server
+```
+
+And then run client command:
+
+```shell
+cabal build simple-client
+```
+
+The cause for this is that client code queries methods from the server in compile-time to assure in type correctness of methods.
+
+Run all tests:
+
+```shell
+cabal test --enable-tests --test-show-details=direct
+```
+
+### Stack
+
+Recommended to build `simple-server` first with:
+
+```shell
+stack ghci
+```
+
+And run the main function to start the server. It will provide the working server for client example compilation and the whole project:
+
+```shell
+stack build --test --no-run-tests
+```
+
+Run all tests:
+
+```shell
+stack test
+```
