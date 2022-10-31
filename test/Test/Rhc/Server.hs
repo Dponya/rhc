@@ -25,11 +25,10 @@ checkMaxBound x =
       (ErrorServCause (ServerError (-32000)))
       "Number isn't a maxBound"
 
-injectMethods
-  [ ("lists.maxLength", 'maxLength)
-  , ("lists.concatWholeList", 'concatWholeList)
-  , ("lists.checkMaxBound", 'checkMaxBound)
-  ]
+generate $ domain "lists" $
+             method "maxLength" 'maxLength
+          <> method "concatWholeList" 'concatWholeList
+          <> method "checkMaxBound" 'checkMaxBound
 
 serverSpec :: Spec
 serverSpec = describe "mainThread" $ do
