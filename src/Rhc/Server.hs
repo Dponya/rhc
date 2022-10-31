@@ -1,12 +1,15 @@
 module Rhc.Server
   ( executeDecoded
-  , injectMethods
   , runWarp
   , RemoteAction
+  , Namespace
   , sendDomains
   , mainThread
   , singlePerform
   , batchPerform
+  , domain
+  , method
+  , generate
   , module Rhc.Server.Error
   , module Rhc.Server.Request
   , module Rhc.Server.Response
@@ -40,11 +43,16 @@ import Rhc.Server.Error
 import Rhc.Server.Remote
   ( RemoteTable
   , RPC(runRPC)
+  , ActionResponse
+  , RemoteAction
+  , Namespace
   , RemoteEnv(RemoteEnv)
+  , domain
+  , method
+  , generate
   )
-import Rhc.Server.Request (Req(..), parseRequest, handleRequest)
+import Rhc.Server.Request (Req (Notif, Req), parseRequest, handleRequest)
 import Rhc.Server.Response (Res(..), buildResponse, buildFromUser)
-import Rhc.Server.Remote (ActionResponse, RemoteAction, injectMethods)
 
 
 executeDecoded ::

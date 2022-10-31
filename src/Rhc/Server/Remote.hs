@@ -8,7 +8,10 @@ module Rhc.Server.Remote
   , RemoteAction
   , RemoteActionName
   , RemoteActionDomain
-  , injectMethods
+  , Namespace
+  , method
+  , domain
+  , generate
   ) where
 
 import Control.Monad.Reader (ReaderT, MonadReader)
@@ -47,11 +50,34 @@ type RemoteTable = [(
     RemoteAction ByteString ActionResponse
   )]
 
+data Method = Method Text Name
+  deriving stock Show
+
+data Domain = Domain Text [Method]
+  deriving stock Show
+
+newtype Namespace = Namespace Domain
+  deriving stock Show
+
+domain :: Text -> [Method] -> [Namespace]
+domain name mtds = [Namespace $ Domain name mtds]
+
+method :: Text -> Name -> [Method]
+method name identifier = [Method name identifier]
+
+generate :: [Namespace] -> Q [Dec]
+generate ns = injectMethods $ mconcat $ fmap construct ns
+  where
+    construct :: Namespace -> [(Text, Name)]
+    construct (Namespace (Domain name mds)) = fmap (patterner name) mds
+    patterner :: Text -> Method -> (Text, Name)
+    patterner dname (Method name md) = (dname <> "." <> name, md)
+
 injectMethods :: [(Text, Name)] -> Q [Dec]
 injectMethods names =
   [d|
     remoteTable :: RemoteTable
-    remoteTable =       (
+    remoteTable = (
         (
           $(packSenderDomains names (generateTable names))
         ) :
