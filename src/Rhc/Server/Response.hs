@@ -12,7 +12,7 @@ import Data.Aeson
   , object
   )
 import Data.Aeson.Types (Value(..))
-import Rhc.Server.Request (Req(..))
+import Rhc.Server.Request (Req(..), ReqWithId(..), Notif(..))
 import Rhc.Server.Remote (ActionResponse)
 import Rhc.Server.Error (ErrorObject)
 
@@ -90,9 +90,9 @@ instance ToJSON Res where
       ]
   toJSON (ResVoid ()) = Null
 
-buildResponse :: Req -> ActionResponse -> Res
-buildResponse Notif {} _ = ResVoid ()
-buildResponse (Req _ _ _ rId) result = ResSuccess "2.0" result rId
+buildResponse :: Req Value -> Res
+buildResponse (FullReq (ReqWithId _ _ result rId)) = ResSuccess "2.0" result rId
+buildResponse (ReqNotif _) = ResVoid ()
 
 buildFromUser :: ErrorObject -> Res
 buildFromUser obj = ResErrsWithoutId "2.0" obj

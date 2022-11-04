@@ -51,7 +51,7 @@ import Rhc.Server.Remote
   , method
   , generate
   )
-import Rhc.Server.Request (Req (Notif, Req), parseRequest, handleRequest)
+import Rhc.Server.Request (Req (..), Notif(..), ReqWithId(..), parseRequest, handleRequest)
 import Rhc.Server.Response (Res(..), buildResponse, buildFromUser)
 
 
@@ -70,19 +70,19 @@ catchParseErrs e = pure $ toJSON build
   where
     build = ResErrsWithoutId "2.0" (errObject (ErrorParseCause e))
 
-userDefinedHandler :: ErrorObject -> Req -> RPC Value
+userDefinedHandler :: ErrorObject -> Req Value -> RPC Value
 userDefinedHandler obj req = pure $ toJSON $ build obj req
   where
-    build :: ErrorObject -> Req -> Res
-    build _ Notif {} = ResVoid ()
-    build errObj (Req _ _ _ rId) = ResErrsWithId "2.0" errObj rId
+    build :: ErrorObject -> Req Value -> Res
+    build _ (ReqNotif _) = ResVoid ()
+    build errObj (FullReq (ReqWithId _ _ _ rId)) = ResErrsWithId "2.0" errObj rId
 
-executionErrHandler :: ErrorExecutionCause -> Req -> RPC Value
+executionErrHandler :: ErrorExecutionCause -> Req Value -> RPC Value
 executionErrHandler e req = pure $ toJSON $ buildWithId (ErrorExecutionCause e) req
   where
-    buildWithId :: ErrorCause -> Req -> Res
-    buildWithId _ Notif {} = ResVoid ()
-    buildWithId c (Req _ _ _ rId) = ResErrsWithId "2.0" (errObject c) rId
+    buildWithId :: ErrorCause -> Req Value -> Res
+    buildWithId _ (ReqNotif _) = ResVoid ()
+    buildWithId c (FullReq (ReqWithId _ _ _ rId)) = ResErrsWithId "2.0" (errObject c) rId
 
 systemErrHandler :: IOException -> IO Value
 systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalError)
@@ -90,10 +90,10 @@ systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalErro
     buildWithoutId :: ErrorCause -> Res
     buildWithoutId e = ResErrsWithoutId "2.0" (errObject e)
 
-batchPerform :: [Maybe Req] -> RPC [Value]
+batchPerform :: [Maybe (Req Value)] -> RPC [Value]
 batchPerform = traverse execute
   where
-    execute (Just req) = (toJSON . buildResponse req <$> handleRequest req)
+    execute (Just req) = (toJSON . buildResponse <$> handleRequest req)
       `catches` [
         Handler $ flip userDefinedHandler req,
         Handler $ flip executionErrHandler req
@@ -101,9 +101,9 @@ batchPerform = traverse execute
     execute Nothing = pure . toJSON $ build
     build = ResErrsWithoutId "2.0" (errObject (ErrorParseCause InvalidRequest))
 
-singlePerform :: Req -> RPC Value
+singlePerform :: Req Value -> RPC Value
 singlePerform req
-  = (toJSON . buildResponse req <$> handleRequest req)
+  = (toJSON . buildResponse <$> handleRequest req)
     `catches`
       [ Handler $ flip executionErrHandler req
       , Handler $ flip userDefinedHandler req
