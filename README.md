@@ -4,7 +4,7 @@
 
 ## Goal
 
-At the moment, the library is in the active development stage. The package was designed and developed to follow the specific goals of the author and help him to learn about Haskell's features. So, the package isn't assuming that it will be used in real production code and now is in the development stage.
+At the moment, the library is in the active development stage. The package was designed and developed to follow the specific goals of the author and help him to learn about Haskell's features. So, this package isn't ready for production use yet, and maybe will be ready
 
 ## Features
 
