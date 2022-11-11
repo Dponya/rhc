@@ -35,27 +35,42 @@ sendDomains table names = pure $ domains `includes` names
     includes :: [DomainMethods Value] -> [String] -> [DomainMethods Value]
     includes ds (n:ns) = filter (isSame n) ds <> includes ds ns
     includes _ [] = []
+
+    isSame :: String -> DomainMethods ty -> Bool
     isSame n (DomainMethods dn _) = dn == T.pack n
+
     domains = buildDomains table
 
 buildDomains :: [(T.Text, Value)] -> [DomainMethods Value]
-buildDomains table = fmap construct $ group . toSorted . fmap pack $ table
+buildDomains table =
+  fmap construct $
+       group .
+       toSorted . 
+       fmap pack $ table
   where
+    construct :: [DomainMethods ty] -> DomainMethods ty
     construct (DomainMethods n x : xs) =
       foldl append (DomainMethods n x) xs
-    construct [] = undefined
+    construct [] = DomainMethods mempty mempty
+
+    append :: DomainMethods ty -> DomainMethods ty -> DomainMethods ty
     append (DomainMethods d fn) (DomainMethods _ fn1) =
       DomainMethods d (mappend fn fn1)
+
+    toSorted :: [DomainMethods ty] -> [DomainMethods ty] 
     toSorted = sortBy isEqual
+
+    isEqual :: DomainMethods ty -> DomainMethods ty1 -> Ordering
     isEqual
       (DomainMethods x _)
       (DomainMethods x1 _) = compare x x1
 
     pack :: (T.Text, Value) -> DomainMethods Value
-    pack (x1, x2) = DomainMethods (fst (divide x1)) [MethodInfo (snd (divide x1)) x2]
+    pack (path, fn) = DomainMethods
+      (fst . divideFnPath $ path)
+      [MethodInfo (snd . divideFnPath $ path) fn]
 
-divide :: T.Text -> (RemoteActionDomain, RemoteActionName)
-divide f = (domain, name)
+divideFnPath :: T.Text -> (RemoteActionDomain, RemoteActionName)
+divideFnPath fnName = (head divided, head $ tail divided)
   where
-    [domain, name] = splitter
-    splitter = T.splitOn "." f
+    divided = T.splitOn "." fnName
