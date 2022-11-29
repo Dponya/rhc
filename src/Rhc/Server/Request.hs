@@ -139,7 +139,10 @@ parseRequest ::
 parseRequest bs = decode @Value bs
   & \case
       Nothing -> throwM ParseError
-      Just val@(Array _) -> pure $ Left $ batchReq val
+      Just val@(Array _) -> val ^.. values &
+        \case
+          [] -> throwM InvalidRequest
+          _ -> pure $ Left $ batchReq val
       Just val@(Object _) -> parseMaybe parseJSON val & \case
           Nothing -> throwM InvalidRequest
           Just obj -> pure $ Right obj

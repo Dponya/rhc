@@ -55,16 +55,15 @@ errObject :: ErrorCause -> ErrorObject
 errObject cause = ErrorObject cause (show cause)
 
 instance Show ErrorParseCause where
-  show ParseError = "Invalid JSON was received by the server. \
-    \An error occurred on the server while parsing the JSON text."
-  show InvalidRequest = "The JSON sent is not a valid Request object."
+  show ParseError = "Parse Error"
+  show InvalidRequest = "Invalid Request"
 
 instance Show ErrorExecutionCause where
-  show MethodNotFound = "The method does not exist / is not available."
-  show InvalidParams = "Invalid method parameter(s)."
+  show MethodNotFound = "Method not found"
+  show InvalidParams = "Invalid params"
 
 instance Show ErrorServCause where
-  show InternalError = "Internal JSON-RPC error."
+  show InternalError = "Internal error"
   show (ServerError a) = show a
 
 instance Show ErrorCause where

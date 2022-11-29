@@ -58,7 +58,7 @@ serverSpec = describe "mainThread" $ do
                 "method": "lists.concatWholeList"
               }
             |]
-      let errMsg = "The JSON sent is not a valid Request object."
+      let errMsg = "Invalid Request"
       let expected = toJSON $
             ResErrsWithoutId "2.0"
               (ErrorObject (ErrorParseCause InvalidRequest) errMsg)
@@ -75,7 +75,7 @@ serverSpec = describe "mainThread" $ do
                 invalid
               }
             |]
-      let errMsg = "Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text."
+      let errMsg = "Parse Error"
       let expected = toJSON $
             ResErrsWithoutId "2.0"
               (ErrorObject (ErrorParseCause ParseError) errMsg)
@@ -94,7 +94,7 @@ serverSpec = describe "mainThread" $ do
                 "params": [1,2,3]
               }
             |]
-      let errMsg = "The method does not exist / is not available."
+      let errMsg = "Method not found"
       let expected = toJSON $
             ResErrsWithId "2.0"
               (ErrorObject (ErrorExecutionCause MethodNotFound) errMsg) 324
@@ -113,7 +113,7 @@ serverSpec = describe "mainThread" $ do
                 "params": "im not right"
               }
             |]
-      let errMsg = "Invalid method parameter(s)."
+      let errMsg = "Invalid params"
       let expected = toJSON $
             ResErrsWithId "2.0"
               (ErrorObject (ErrorExecutionCause InvalidParams) errMsg) 324
@@ -121,7 +121,7 @@ serverSpec = describe "mainThread" $ do
       sut <- mainThread req remoteTable
 
       sut `shouldBe` (expected :: Value)
-
+    
     it "method throws custom exception and replies client as well" $ do
       let req =
             [r|
@@ -170,8 +170,19 @@ serverSpec = describe "mainThread" $ do
 
       sut `shouldBe` (expected :: Value)
     
+    it "invalid batch request is invalid as well" $ do
+      let reqs = "[]"
+      let errMsg = "Invalid Request"
+      let expected = toJSON $
+            ResErrsWithoutId "2.0"
+              (ErrorObject (ErrorParseCause InvalidRequest) errMsg) 
+      
+      sut <- mainThread reqs remoteTable
+
+      sut `shouldBe` (expected :: Value)
+
     it "method throws custom exception and replies client as well" $ do
-      let reqs = 
+      let reqs =
             [r|
               [
                 {

@@ -17,7 +17,6 @@ module Rhc.Server
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Catch (catches, Handler(Handler), MonadThrow(throwM))
-import Control.Exception (IOException)
 import Data.Aeson
     (eitherDecode, encode, FromJSON, Value, ToJSON(toJSON))
 import Data.ByteString.Builder (byteString, toLazyByteString)
@@ -53,6 +52,7 @@ import Rhc.Server.Remote
   )
 import Rhc.Server.Request (Req (..), Notif(..), ReqWithId(..), parseRequest, handleRequest)
 import Rhc.Server.Response (Res(..), buildResponse, buildFromUser)
+import Control.Exception.Base
 
 
 executeDecoded ::
@@ -84,7 +84,7 @@ executionErrHandler e req = pure $ toJSON $ buildWithId (ErrorExecutionCause e) 
     buildWithId _ (ReqNotif _) = ResVoid ()
     buildWithId c (FullReq (ReqWithId _ _ _ rId)) = ResErrsWithId "2.0" (errObject c) rId
 
-systemErrHandler :: IOException -> IO Value
+systemErrHandler :: SomeException -> IO Value
 systemErrHandler _ = pure $ toJSON $ buildWithoutId (ErrorServCause InternalError)
   where
     buildWithoutId :: ErrorCause -> Res
