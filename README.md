@@ -25,8 +25,6 @@ Client-Side code:
 
 module Main where
 
-import Control.Monad.Reader (ReaderT (..))
-
 import Rhc
 
 
@@ -39,9 +37,6 @@ config = CliConf
     , cHost = "localhost"
     , cProtocol = Http
     }
-
-remoteRunner :: RemoteCall a -> IO a
-remoteRunner x = runReaderT (runCall x) config
 
 main :: IO ()
 main = remoteRunner (makeCoffee "hello from client!") >>= print
