@@ -59,9 +59,8 @@ instance FromJSON Res where
                   <$> v .: "jsonrpc"
                   <*> v .: "error"
                   <*> v .: "id"
+  parseJSON Null = pure $ ResVoid ()
   parseJSON _ = mempty
-
-
 
 instance ToJSON Res where
   toJSON (ResSuccess ver result rId) =

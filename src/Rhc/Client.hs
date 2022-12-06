@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Rhc.Client
   ( CliConf (..)
@@ -21,7 +22,7 @@ import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Data.Aeson (FromJSON, ToJSON, Value, fromJSON, object, (.=))
+import Data.Aeson (FromJSON, ToJSON, Value, fromJSON, object, (.=), toJSON)
 import Data.Aeson.Types (Result (..))
 import Data.Function
 import Data.Proxy
@@ -50,6 +51,7 @@ import Rhc.Server.Response
       , ResErrsWithoutId
       , ResErrsWithId
       , ResSystemErrs
+      , ResVoid
       )
     )
 
@@ -65,13 +67,15 @@ data CliConf = CliConf
     cProtocol :: CliProtocol
   }
 
+data RequestOpions = Options ReqId CliConf
+
 newtype RemoteCall a = RemoteCall
-  { unRemoteCall :: ReaderT CliConf IO a }
+  { unRemoteCall :: ReaderT RequestOpions IO a }
   deriving newtype
     ( Monad
     , Applicative
     , Functor
-    , MonadReader CliConf
+    , MonadReader RequestOpions
     , MonadIO
     , MonadThrow
     , MonadCatch
@@ -81,33 +85,43 @@ data ClientErrs = CliSysErr String
   deriving stock Show
   deriving anyclass Exception
 
-remoteRunner :: CliConf -> RemoteCall a -> IO a
-remoteRunner conf fn = runReaderT (unRemoteCall fn) conf
+type RemoteCall' a = RemoteCall (Either () a)
 
-remoteNotifier :: CliConf -> RemoteCall a -> IO ()
-remoteNotifier conf fn = runReaderT (unRemoteCall fn) conf >> pure ()
+remoteRunner :: CliConf -> RemoteCall' a -> IO a
+remoteRunner conf fn =
+  (runReaderT (unRemoteCall fn) options) >>= unwrap
+  where
+    unwrap :: Either () a -> IO a
+    unwrap (Right a) = pure a
+    unwrap _ = throwM $ CliSysErr "unwrapping response failed"
+    options = Options (Just 42) conf
+
+remoteNotifier :: CliConf -> RemoteCall' a -> IO ()
+remoteNotifier conf fn =
+  runReaderT (unRemoteCall fn) options >>= unwrap
+  where
+    unwrap :: Either () a -> IO ()
+    unwrap (Left ()) = pure ()
+    unwrap _ = throwM $ CliSysErr "unwrapping response failed"
+    options = Options Nothing conf
 
 load :: CliConf -> [String] -> Q [Dec]
 load conf ds = runIO (queryDomains conf ds) >>=
   \xs -> runIO (mapM rebuildDms xs) >>= traverseDms
 
 queryDomains :: CliConf -> [String] -> IO [DomainMethods Type]
-queryDomains conf@(CliConf {..}) domains =
-  cProtocol &
-    \case
-      Http -> run httpRun "sendDomains" (-100) domains conf
-      Https -> run httpsRun "sendDomains" (-100) domains conf
-      Websocket -> undefined
+queryDomains conf domains =
+  runRequest "sendDomains" (-100) domains conf
 
 rebuildSig :: Type -> Either String Type
 rebuildSig = rebuild
   where
     rebuild (ForallT vrs ctx t) = fmap (ForallT vrs ctx) (rebuild t)
-    rebuild (AppT (AppT _ farg) sarg)
-      = Right (AppT (AppT ArrowT farg) (AppT monadTy sarg))
+    rebuild (AppT (AppT _ farg) sarg) = Right
+      (AppT (AppT ArrowT farg) (AppT monadTy (sarg)))
     rebuild _ = Left "not implemented"
 
-    monadTy = ConT ''RemoteCall
+    monadTy = ConT ''RemoteCall'
 
 rebuildDms :: DomainMethods Type -> IO (DomainMethods Type)
 rebuildDms (DomainMethods dm ms) = DomainMethods dm <$> mapM unpackMs ms
@@ -143,14 +157,17 @@ declareServMethods dm nm ty = do
 generateFnBody :: String -> String -> Q Exp
 generateFnBody domainName fnName =
   [|\arg ->
-      do conf@CliConf{..} <- ask
-         cProtocol &
-          \case
-            Http -> run httpRun
-              (domainName <> "." <> fnName) 42 arg conf
-            Https -> run httpsRun
-              (domainName <> "." <> fnName) 42 arg conf
-            Websocket -> undefined
+      do (Options reqType conf) <- ask
+         reqType & \case
+          Just rId -> Right <$> runRequest
+            (domainName <> "." <> fnName)
+            rId
+            arg
+            conf
+          Nothing -> Left <$> runNotif
+            (domainName <> "." <> fnName)
+            arg
+            conf
   |]
 
 parseRemoteResult :: Res -> Either ErrorObject Value
@@ -159,9 +176,10 @@ parseRemoteResult = \case
   ResErrsWithoutId _ eo -> Left eo
   ResErrsWithId _ eo _ -> Left eo
   ResSystemErrs _ eo -> Left eo
-  _ -> undefined
+  ResVoid _ -> Right $ toJSON ()
 
 type FullDomain = String
+type ReqId = Maybe Integer
 
 httpRun :: Proxy ('Http)
 httpRun = Proxy
@@ -172,18 +190,45 @@ httpsRun = Proxy
 websocketRun :: Proxy ('Websocket)
 websocketRun = Proxy
 
-class (ToJSON arg, FromJSON b) =>
-  Protocol (a :: CliProtocol) arg b where
-    run :: MonadIO m => Proxy a ->
-          FullDomain -> Integer -> arg -> CliConf -> m b
+runRequest :: (MonadIO m, ToJSON arg, FromJSON b) => 
+  FullDomain ->
+  Integer ->
+  arg ->
+  CliConf -> m b
+runRequest fullDomain reqId arg conf@(CliConf {..}) =
+  cProtocol & \case
+    Http -> run httpRun
+      fullDomain reqId arg conf
+    Https -> run httpsRun
+      fullDomain reqId arg conf
+    Websocket -> undefined
+
+runNotif :: (ToJSON arg, MonadIO m) => FullDomain -> arg -> CliConf -> m ()
+runNotif fullDomain arg conf@(CliConf {..}) =
+  cProtocol & \case
+    Http -> runWithoutId @_ @_ @() httpRun
+      fullDomain arg conf
+    Https -> runWithoutId @_ @_ @() httpsRun
+      fullDomain arg conf
+    Websocket -> undefined
+
+class (ToJSON arg, FromJSON res) => Protocol (a :: CliProtocol) arg res where
+  run :: MonadIO m => Proxy a ->
+        FullDomain -> Integer -> arg -> CliConf -> m res
+  runWithoutId :: MonadIO m => Proxy a ->
+        FullDomain -> arg -> CliConf -> m ()
 
 instance (ToJSON arg, FromJSON b) => Protocol ('Http) arg b where
-  run _ fullDomain rId arg conf =
+  run _ fullDomain rId arg CliConf {..} =
     liftIO $ runReq defaultHttpConfig handl
     where
-      handl :: (R.Req b)
+      response :: FromJSON res => R.Req (JsonResponse res)
+      response = buildHttpReqTemplate cPort
+        (T.pack cHost)
+        (reqObject fullDomain arg rId)
+      handl :: R.Req b
       handl = do
-        j <- requester fullDomain 42 arg conf
+        j <- response
         parseRemoteResult (responseBody j :: Res) &
           \case
             Left eo -> throwM eo
@@ -191,14 +236,33 @@ instance (ToJSON arg, FromJSON b) => Protocol ('Http) arg b where
               \case
                 Error s -> throwM (CliSysErr s)
                 Success result -> pure result
+
+  runWithoutId _ fullDomain arg (CliConf {..}) =
+    liftIO $ runReq defaultHttpConfig handl
+      where
+        response :: FromJSON res => R.Req (JsonResponse res)
+        response = buildHttpReqTemplate cPort
+          (T.pack cHost)
+          (reqObjectWithoutId fullDomain arg)
+        handl :: R.Req ()
+        handl = do
+          j <- response
+          parseRemoteResult (responseBody j :: Res) &
+            \case
+              Left eo -> throwM eo
+              Right _ -> pure ()
 
 instance (ToJSON arg, FromJSON b) => Protocol ('Https) arg b where
-  run _ fullDomain rId arg conf =
+  run _ fullDomain rId arg CliConf {..} =
     liftIO $ runReq defaultHttpConfig handl
     where
-      handl :: (R.Req b)
+      response :: FromJSON res => R.Req (JsonResponse res)
+      response = buildHttpsReqTemplate cPort
+        (T.pack cHost)
+        (reqObject fullDomain arg rId)
+      handl :: R.Req b
       handl = do
-        j <- requester fullDomain 42 arg conf
+        j <- response
         parseRemoteResult (responseBody j :: Res) &
           \case
             Left eo -> throwM eo
@@ -207,37 +271,50 @@ instance (ToJSON arg, FromJSON b) => Protocol ('Https) arg b where
                 Error s -> throwM (CliSysErr s)
                 Success result -> pure result
 
-requester ::
-  (FromJSON res, ToJSON prm) =>
-  String ->
-  Integer ->
-  prm ->
-  CliConf ->
-  R.Req (JsonResponse res)
-requester mtd reqId prm =
-  \case
-    (CliConf p h Http) -> templateHttp p (T.pack h)
-    (CliConf p h Https) -> templateHttps p (T.pack h)
-    (CliConf _ _ Websocket) -> undefined -- not implemented yet
-  where
-    body =
-      object
-        [ "jsonrpc" .= ("2.0" :: String),
-          "method" .= mtd,
-          "params" .= prm,
-          "id" .= reqId
-        ]
-    templateHttps p h =
-      req
-        POST
-        (https h)
-        (ReqBodyJson body)
-        jsonResponse
-        (port p)
-    templateHttp p h =
-      req
-        POST
-        (http h)
-        (ReqBodyJson body)
-        jsonResponse
-        (port p)
+  runWithoutId _ fullDomain arg (CliConf {..}) =
+    liftIO $ runReq defaultHttpConfig handl
+      where
+        response :: FromJSON res => R.Req (JsonResponse res)
+        response = buildHttpsReqTemplate cPort
+          (T.pack cHost)
+          (reqObjectWithoutId fullDomain arg)
+        handl :: R.Req ()
+        handl = do
+          j <- response
+          parseRemoteResult (responseBody j :: Res) &
+            \case
+              Left eo -> throwM eo
+              Right _ -> pure ()
+
+reqObjectWithoutId :: ToJSON prm => String -> prm -> Value
+reqObjectWithoutId mtd prm = object
+  [ "jsonrpc" .= ("2.0" :: String),
+    "method" .= mtd,
+    "params" .= prm
+  ]
+
+reqObject :: ToJSON prm => String -> prm -> Integer -> Value
+reqObject mtd prm reqId = object
+  [ "jsonrpc" .= ("2.0" :: String),
+    "method" .= mtd,
+    "params" .= prm,
+    "id" .= reqId
+  ]
+
+buildHttpReqTemplate :: FromJSON res => Int ->
+  T.Text -> Value -> R.Req (JsonResponse res)
+buildHttpReqTemplate p h body = req
+  POST
+  (http h)
+  (ReqBodyJson body)
+  jsonResponse
+  (port p)
+
+buildHttpsReqTemplate :: FromJSON res => Int ->
+  T.Text -> Value -> R.Req (JsonResponse res)
+buildHttpsReqTemplate p h body = req
+  POST
+  (https h)
+  (ReqBodyJson body)
+  jsonResponse
+  (port p)
