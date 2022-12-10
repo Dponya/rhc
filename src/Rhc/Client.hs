@@ -14,6 +14,8 @@ module Rhc.Client
   , load
   , remoteRunner
   , remoteNotifier
+  , specify
+  , rand
   ) where
 
 
@@ -26,6 +28,7 @@ import Data.Aeson (FromJSON, ToJSON, Value, fromJSON, object, (.=), toJSON)
 import Data.Aeson.Types (Result (..))
 import Data.Function
 import Data.Proxy
+import System.Random.Stateful
 import Language.Haskell.TH (clause, funD, normalB)
 import Language.Haskell.TH.Syntax
     (mkName, Q, Type(ConT, ForallT, ArrowT, AppT), Dec(SigD), runIO, Exp)
@@ -67,15 +70,16 @@ data CliConf = CliConf
     cProtocol :: CliProtocol
   }
 
-data RequestOpions = Options ReqId CliConf
+data RequestOptions =
+  Options ReqId CliConf
 
 newtype RemoteCall a = RemoteCall
-  { unRemoteCall :: ReaderT RequestOpions IO a }
+  { unRemoteCall :: ReaderT RequestOptions IO a }
   deriving newtype
     ( Monad
     , Applicative
     , Functor
-    , MonadReader RequestOpions
+    , MonadReader RequestOptions
     , MonadIO
     , MonadThrow
     , MonadCatch
@@ -87,14 +91,36 @@ data ClientErrs = CliSysErr String
 
 type RemoteCall' a = RemoteCall (Either () a)
 
-remoteRunner :: CliConf -> RemoteCall' a -> IO a
-remoteRunner conf fn =
-  (runReaderT (unRemoteCall fn) options) >>= unwrap
+data ReqIdOption =
+    Specify Integer
+  | Rand
+
+specify :: Integer -> ReqIdOption
+specify = Specify
+
+rand :: ReqIdOption
+rand = Rand
+
+randReqIdGen :: IO Integer
+randReqIdGen = impureGen
   where
-    unwrap :: Either () a -> IO a
-    unwrap (Right a) = pure a
-    unwrap _ = throwM $ CliSysErr "unwrapping response failed"
-    options = Options (Just 42) conf
+    range = uniformR (-32000 :: Integer, -32099 :: Integer)
+    impureGen = applyAtomicGen range globalStdGen
+
+remoteRunner :: CliConf -> ReqIdOption -> RemoteCall' a -> IO a
+remoteRunner conf rOption fn
+  = rOption &
+      \case
+        Specify rId -> (runReaderT (unRemoteCall fn) (options rId conf))
+          >>= unwrap
+        Rand -> randReqIdGen >>= \rId ->
+          (runReaderT (unRemoteCall fn) (options rId conf)) >>= unwrap
+    where
+      unwrap :: Either () a -> IO a
+      unwrap (Right a) = pure a
+      unwrap _ = throwM $ CliSysErr "unwrapping response failed"
+      options :: Integer -> CliConf -> RequestOptions
+      options rId conf = Options (Just rId) conf
 
 remoteNotifier :: CliConf -> RemoteCall' a -> IO ()
 remoteNotifier conf fn =
@@ -103,6 +129,7 @@ remoteNotifier conf fn =
     unwrap :: Either () a -> IO ()
     unwrap (Left ()) = pure ()
     unwrap _ = throwM $ CliSysErr "unwrapping response failed"
+    options :: RequestOptions
     options = Options Nothing conf
 
 load :: CliConf -> [String] -> Q [Dec]

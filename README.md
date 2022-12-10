@@ -4,7 +4,7 @@
 
 ## Goal
 
-At the moment, the library is in the active development stage. The package was designed and developed to follow the specific goals of the author and help him to learn about Haskell's features. So, this package isn't ready for production use yet, and maybe will be ready
+At the moment, the library is in the active development stage. The package was designed and developed to follow the specific goals of the author and help him to learn about Haskell's features. So, this package isn't ready for production use yet, and maybe will be ready soon
 
 ## Features
 
@@ -38,8 +38,15 @@ config = CliConf
     , cProtocol = Http
     }
 
+coffeeNotification :: IO ()
+coffeeNotification = remoteNotifier
+    config (makeCoffee "Hello!")
+
 main :: IO ()
-main = remoteRunner (makeCoffee "hello from client!") >>= print
+main = remoteRunner
+    config
+    rand
+    (makeCoffee "hello from client!") >>= print
 
 ```
 

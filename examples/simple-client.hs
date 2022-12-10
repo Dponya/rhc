@@ -15,5 +15,12 @@ config = CliConf
     , cProtocol = Http
     }
 
+coffeeNotification :: IO ()
+coffeeNotification = remoteNotifier
+    config (makeCoffee "Hello!")
+
 main :: IO ()
-main = remoteRunner config (makeCoffee "hello from client!") >>= print
+main = remoteRunner
+    config
+    rand
+    (makeCoffee "hello from client!") >>= print
